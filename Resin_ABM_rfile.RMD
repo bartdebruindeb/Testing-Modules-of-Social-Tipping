@@ -1,0 +1,517 @@
+---
+output:
+  html_document: default
+  word_document: default
+---
+load relevant libraries
+load packages
+```{r include=FALSE}
+rm(list=ls())
+
+#if(!require(installr)) {
+#  install.packages("installr"); 
+#  require(installr)
+#} #load
+
+#updateR()
+
+
+if(!require("pacman")) install.packages('pacman')
+pacman::p_load(NetworkToolbox,
+               # graph,
+               leidenAlg,
+               ggthemes,
+               knitr ,
+               ResIN,
+               data.table,
+               igraph,
+               qgraph,
+               tidyverse,
+               dplyr,
+               ggplot2,
+               naniar,
+               gdata,
+               doParallel,
+               wCorr,
+               qgraph,
+               MASS,
+               Matrix,
+               matrixcalc,
+               randcorr,
+               rWishart,
+               ggpubr,
+               ggdark )
+
+
+```
+
+set working directory
+
+```{r include=FALSE}
+
+### MANUAL INPUT: specify and set working directory ###
+workdirec <-"C:/Users/20225262/OneDrive - TU Eindhoven/Documents/GitHub/ResIN" 
+setwd(workdirec)
+source("functions_behaviorspace_table_output_handling.R")
+
+### MANUAL INPUT: Optionally specify filepath (i.e. where the behaviorspace csv is situated) ###
+#NOTE: if csv files are placed in the workdirec, then leave filesPath unchanged
+filesPath <- ""
+### MANUAL INPUT: specify filenames ###
+filesNames <- c(
+  "C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Courses/ResIN/Resin dummy experiment.csv"
+  )
+
+
+```
+
+
+Read data and rename columns
+```{r include=FALSE}
+# READ DATA ---------------------------------------------------------------
+
+df <- loadData(filesPath, filesNames)
+
+
+# REMOVE IRRELEVANT VARIABLES ---------------------------------------------------------------
+
+df <- removeVariables(df)
+
+# RENAME VARIABLES ---------------------------------------------------------------
+printColumnNames(df)
+
+  ### MANUAL INPUT: specify new (easy-to-work-with) variable names ###
+  new_variable_names <- list(
+    "run_number",
+    "k",
+   # "levels",
+  #  "items", 
+   # "ordinality",
+    "Population_Size",
+    "Degree_of_Cognition", 
+    "seed",
+    "time_step",
+    "adjacency_matrix",
+    "IC_Global",
+    "IC_Neighbors"
+  )
+
+#change variable names
+variable_names <- names(df)
+if (length(variable_names) == length(new_variable_names)) {
+  clean_df <- changeColumnNames(df, new_variable_names)
+} else {
+  print (length(variable_names))
+  print (length(new_variable_names))
+  print("ERROR: the number of variable names you specified is not the same as the number of variables present within the dataframe; please check again")
+}
+```
+
+Compute Modularity
+
+
+```{r message=FALSE, warning=FALSE, include=FALSE}
+#ComputeModularity <- function(p_clean_df, column_name, levels_stable, items_stable, stable_levels, stable_items, column_levels, column_items, resolution_parameter)
+                 #resolution_parameter, add more to to list to compare modularity
+ComputeModularity <- function(p_clean_df, column_name, levels_stable, items_stable, stable_levels, stable_items, column_levels, column_items) {
+  for(i in 1:length(p_clean_df[[column_name]])) {
+    if (levels_stable == "true" && items_stable == "true") {
+      columns <- stable_levels * stable_items
+    }
+    else if (levels_stable == "true" && items_stable == "false"){
+      columns <- stable_levels * p_clean_df[[i,column_items]]
+    }
+    else if (levels_stable == "false" && items_stable == "true"){
+      columns <- p_clean_df[[i,column_levels]] * stable_items 
+    }
+    else {
+      columns <- p_clean_df[[i,column_levels]] * p_clean_df[[i,column_items]]
+    }
+    aj_matrix <- pmax(matrix(scan(quiet = TRUE, text = toString(p_clean_df[[i,column_name]])), ncol = columns,byrow = TRUE),0)
+    colnames(aj_matrix) <- paste("Column", seq(ncol(aj_matrix)))
+    aj_graph <- igraph::graph_from_adjacency_matrix(aj_matrix, mode = "undirected", weighted = TRUE, diag = FALSE)
+    
+    cluster <- cluster_leiden(aj_graph, resolution_parameter = 0.4, objective_function = "modularity", n_iterations = 10)
+    # cluster <- cluster_walktrap(ResIN_igraph)
+    #  cluster <- cluster_leading_eigen(ResIN_igraph)
+    #   cluster <- cluster_louvain(ResIN_igraph)
+    #   cluster <- cluster_fast_greedy(ResIN_igraph)
+    #    cluster <- cluster_spinglass(ResIN_igraph)
+    #   cluster <- cluster_fluid_communities((ResIN_igraph))
+    communities <- igraph::membership(cluster)
+    nodes <- names(communities)
+    outcome <- as.data.frame(cbind(as.numeric(communities), nodes))
+    colnames(outcome) <- c("cluster", "from")
+      outcome$cluster <- as.integer(outcome$cluster)
+    remove <- c()
+    cluster_list <- outcome$cluster
+
+    x <- length(unique(outcome$cluster))
+    i <- 1
+
+    remove <- c()
+        while(i <= x) {
+      if(length(outcome$cluster[outcome$cluster==i]) < 2) {
+        remove <- append(remove, as.numeric(outcome$cluster[outcome$cluster==i]))
+        outcome$cluster[outcome$cluster==i] <- rep("NA", length(outcome$cluster[outcome$cluster==i]))
+      }
+      i <- i+1}
+     clusters <- length(unique(as.numeric(outcome$cluster[outcome$cluster !="NA"] )))
+     
+   
+     remove_list <- which(cluster_list %in% remove)
+     index <- 0
+     aj_matrix2 <- aj_matrix
+     if (length(remove_list) > 0) {
+       for (i in remove_list[order(remove_list)]) {
+       i <- i - index
+       aj_matrix2 <- aj_matrix2[-c(as.numeric(i)), -c(as.numeric(i))]
+       index <- index + 1
+}
+   
+   
+    aj_graph2 <-  igraph::graph_from_adjacency_matrix(aj_matrix2, mode = "undirected", weighted = TRUE, diag = FALSE)
+    cluster2 <- cluster_leiden(aj_graph2, resolution_parameter = 0.4, objective_function = "modularity", n_iterations = 10)
+    communities2 <- igraph::membership(cluster2)
+    
+    md <- modularity(aj_graph2, communities2)
+     } else {
+     md <- modularity(aj_graph, communities)
+     }
+    if (exists('md_df') && is.data.frame(get('md_df'))) {
+      md_df <- rbind(md_df, md)
+      clusters_df <- rbind(clusters_df, clusters)
+      removed_df <- rbind(removed_df, length(remove_list))
+    }
+    else {
+      md_df <- data.frame(md)
+      clusters_df <- data.frame(clusters)
+      removed_df <- data.frame(length(remove_list))
+    }
+  }
+    p_clean_df <- cbind(p_clean_df, md_df)
+    colnames(p_clean_df)[ncol(p_clean_df)] = paste("Modularity" )
+    p_clean_df <- cbind(p_clean_df, clusters_df)
+    colnames(p_clean_df)[ncol(p_clean_df)] = paste("Clusters" )
+    p_clean_df <- cbind(p_clean_df, removed_df)
+    colnames(p_clean_df)[ncol(p_clean_df)] = paste("Isolated_Nodes" )
+    rm(list = ls(p_clean_df))
+  return (p_clean_df)
+}
+
+
+
+
+
+df_mod <- clean_df
+df_mod <- ComputeModularity(df_mod, 7, "true", "true", 5, 7,4,5)
+#kable(df_mod<- subset(df_mod, select = -c(adjacency_matrix)), format = "html", booktabs = TRUE)
+
+
+```
+
+
+
+Transform variables with right label
+```{r include=FALSE}
+#transform 'measurement' variable to numeric (as to avoid ggplot errors)
+df_mod$Modularity <- as.numeric(df_mod$Modularity)
+df_mod$Clusters <- as.numeric(df_mod$Clusters)
+df_mod$Isolated_Nodes <- as.numeric(df_mod$Isolated_Nodes)
+#round 'measurement' variable to 4 decimals
+df_mod$Modularity <- round(df_mod$Modularity, 4)
+#convert categorical variables to factors (as to avoid ggplot errors)
+df_mod$run_number <- as.integer(df_mod$run_number)
+df_mod$k <- as.factor(df_mod$k)
+df_mod$Degree_of_Cognition <- as.factor(df_mod$Degree_of_Cognition)
+df_mod$Population_Size <- as.factor(df_mod$Population_Size)
+df_mod$seed <- as.factor(df_mod$seed)
+
+
+```
+
+
+Make Graphs
+---------------------------------
+Modularity
+
+```{r echo=FALSE, fig.height=7.5, fig.width=7.5, message=FALSE, warning=FALSE, results='asis'}
+    
+df_mod %>% 
+   ggplot(aes(x = time_step,
+                y = Modularity)) +
+    
+    geom_smooth(aes(group=k, color=k),
+                method="loess", formula = 'y ~ x', size=1.4, span = 0.2, se=F, fullrange=FALSE, level=0.95) +
+    xlab("Timesteps") +
+    ylab("Modularity") + 
+    labs(title = "Evolution of Modularity (Leiden_algorithm , resolution-parameter == 0.4)",
+       subtitle = "Items == 5, Levels == 7, repetitions == 5 ")+
+    scale_color_viridis_d()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 15), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 15) ) +
+      facet_grid(Degree_of_Cognition ~ Population_Size , labeller = label_both ) 
+
+
+
+```
+Clusters
+
+```{r echo=FALSE, fig.height=7.5, fig.width=7.5, message=FALSE, warning=FALSE, results='asis'}
+    
+df_mod %>% 
+ggplot(aes(x = time_step,
+                y = Clusters)) +
+    
+    geom_smooth(aes(group=k, color=k),
+                method="loess", formula = 'y ~ x', size=1.4, span = 0.2, se=F, fullrange=FALSE, level=0.95) +
+    xlab("Timesteps") +
+    ylab("Clusters") + 
+    labs(title = "Evolution of Clusters (Leiden Algoritm, resolution-parameter == 0.4)",
+       subtitle = "Items == 5, Levels == 7, repetitions == 5 ")+
+    scale_color_viridis_d()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 15), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 15) ) +
+     facet_grid(Degree_of_Cognition ~ Population_Size , labeller = label_both )  
+
+
+
+```
+
+Isolated Nodes
+
+
+```{r echo=FALSE, fig.height=7.5, fig.width=7.5, message=FALSE, warning=FALSE, results='asis'}
+    
+df_mod %>% 
+ggplot(aes(x = time_step,
+                y = Isolated_Nodes)) +
+    
+    geom_smooth(aes(group=k, color=k),
+                method="loess", formula = 'y ~ x', size=1.4, span = 0.2, se=F, fullrange=FALSE, level=0.95) +
+    xlab("Timesteps") +
+    ylab("Isolated Nodes") + 
+    labs(title = "Evolution of Isolated Nodes (Leiden Algoritm, resolution-parameter == 0.4)",
+       subtitle = "Items == 5, Levels == 7, repetitions == 5 ")+
+    scale_color_viridis_d()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 15), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 15) ) +
+     facet_grid(Degree_of_Cognition ~ Population_Size , labeller = label_both )  
+
+
+
+```
+Internal Coherence Whole World Scenario
+
+```{r echo=FALSE, fig.height=7.5, fig.width=7.5, message=FALSE, warning=FALSE, results='asis'}
+    
+df_long <- dplyr::select(clean_df, -adjacency_matrix)
+df_long <- gather(df_long, variable, measurement, IC_Global:IC_Neighbors)
+
+# SPECIFY VARIABLE MEASUREMENT SCALES -----------------------------------------------------
+### MANUAL INPUT: in order for ggplot and plotly to work, one must specify the following: ###
+#-> continuous decimal (floating) variables as 'numeric'
+#-> continuous integer variables as 'integer'
+#-> discrete (or categorical) variables as 'factor'
+
+#print an overview of variables and their measurement scales
+str(df_long)
+#transform 'measurement' variable to numeric (as to avoid ggplot errors)
+df_long$measurement <- as.numeric(df_long$measurement)
+#round 'measurement' variable to 4 decimals
+df_long$measurement <- round(df_long$measurement, 4)
+#convert categorical variables to factors (as to avoid ggplot errors)
+df_long$run_number <- as.integer(df_long$run_number)
+df_long$variable <- as.factor(df_long$variable)
+
+
+
+```
+
+Internal Coherence ------- Whole World Scenario
+
+```{r echo=FALSE, fig.height=7.5, fig.width=7.5, message=FALSE, warning=FALSE, results='asis'}
+df_long %>% filter(Degree_of_Cognition == "whole-world") %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = time_step,
+                y = measurement)) +
+    
+    geom_smooth(aes(group=k, color=k),
+                method="loess", formula = 'y ~ x', size=1.4, span = 0.2, se=F, fullrange=FALSE, level=0.95) +
+    xlab("Timesteps") +
+    ylab("Mean Internal Coherence") + 
+    labs(title = "Evolution of Mean Internal Coherence (Degree_of_Cognition == Whole World)",
+       subtitle = "Items == 5, Levels == 7, repetitions == 5 ")+
+    scale_color_viridis_c()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 14), 
+          plot.subtitle = element_text( size = 14),
+          axis.title = element_text( size = 14) ) +
+     facet_grid(~Population_Size , labeller = label_both )  
+
+
+
+```
+Internal Coherence ---- Neighbors scenario
+
+```{r echo=FALSE, fig.height=7.5, fig.width=7.5, message=FALSE, warning=FALSE, results='asis'}
+df_long %>% filter(Degree_of_Cognition == "neighbors") %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = time_step,
+                y = measurement)) +
+    
+    geom_smooth(aes(group=k, color=k),
+                method="loess", formula = 'y ~ x', size=1.4, span = 0.2, se=F, fullrange=FALSE, level=0.95) +
+    xlab("Timesteps") +
+    ylab("Mean Internal Coherence") + 
+    labs(title = "Evolution of Mean Internal Coherence (Degree_of_Cognition == Neighbors)",
+       subtitle = "Items == 5, Levels == 7, repetitions == 5 ")+
+    scale_color_viridis_c()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 14), 
+          plot.subtitle = element_text( size = 14),
+          axis.title = element_text( size = 14) ) +
+     facet_grid(variable ~ Population_Size, labeller = label_both )  
+
+
+
+```
+
+
+
+Evolution Response Network for k == 2, Degree of Cognition == whole-world, resolution parameter leiden algoritm = 0.4
+
+
+
+```{r echo=FALSE, fig.height=7.5, fig.width=7.5, message=FALSE, warning=FALSE, results='asis'}
+
+
+
+# Compute Adjacency Matrix --------------------------------------------------------------
+ComputeAM <- function(p_clean_df, stable_levels, stable_items) {
+    columns <- stable_levels * stable_items
+    aj_matrix <- pmax(matrix(scan(quiet = TRUE, text = toString(p_clean_df)), ncol = columns,byrow = TRUE),0)
+    colnames(aj_matrix) <- paste("Column", seq(ncol(aj_matrix)))
+  index1 <- 1
+  index2 <- 1 
+  
+  
+  for (i in 1:ncol(aj_matrix)) {
+    colnames(aj_matrix)[[i]] = paste0(index1, sep = "_", index2 ) 
+    index2 <- index2 + 1 
+    if ((index2) > stable_levels ) {
+      index1 <- index1 + 1
+      index2 <- 1
+}
+  }
+  return(aj_matrix)
+}
+
+ plot_time_steps <- list( 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 65, 70, 75, 80, 85, 90, 95, 100, 105, 110, 115, 120, 125, 130, 135, 140, 145, 150, 200, 250, 300, 350, 400, 450, 500)
+ plot_list <- list()
+for (z in plot_time_steps) {
+  
+ 
+
+
+selected_df <- df_mod %>% 
+   filter(run_number == 85
+          , time_step == z)
+resin_adj <- ComputeAM(selected_df[1,7], 7, 5)
+
+## Generating the qgraph and igraph objects
+
+ResIN_igraph <- igraph::graph_from_adjacency_matrix(resin_adj, mode = "undirected", weighted = TRUE, diag = FALSE)
+ResIN_qgraph <- qgraph::qgraph(resin_adj, DoNotPlot = TRUE, layout = "spring")
+
+graph_layout <- as.data.frame(prcomp(igraph::layout_with_fr(ResIN_igraph))$x)
+graph_layout$node_names <- colnames(resin_adj)
+colnames(graph_layout) <- c("x", "y", "node_names")
+
+node_frame <- graph_layout
+node_frame$from <- node_frame$node_names
+
+## Perform clustering analysis
+cluster = TRUE
+  if(cluster==TRUE) {
+    cluster <- cluster_leiden(ResIN_igraph, resolution_parameter = 0.4, objective_function = "modularity", n_iterations = 10)
+  # cluster <- cluster_walktrap(ResIN_igraph)
+    #  cluster <- cluster_leading_eigen(ResIN_igraph)
+ #   cluster <- cluster_louvain(ResIN_igraph)
+ #   cluster <- cluster_fast_greedy(ResIN_igraph)
+#    cluster <- cluster_spinglass(ResIN_igraph)
+#   cluster <- cluster_fluid_communities((ResIN_igraph))
+    communities <- igraph::membership(cluster)
+    nodes <- names(communities)
+    outcome <- as.data.frame(cbind(as.numeric(communities), nodes))
+    colnames(outcome) <- c("cluster", "from")
+    outcome$cluster <- as.numeric(outcome$cluster)
+
+
+    x <- length(unique(outcome$cluster))
+    i <- 1
+
+        while(i <= x) {
+      if(length(outcome$cluster[outcome$cluster==i]) < 2) {
+        outcome$cluster[outcome$cluster==i] <- rep("NA", length(outcome$cluster[outcome$cluster==i]))
+      }
+      i <- i+1}
+     clusters <- length(unique(as.numeric(outcome$cluster[outcome$cluster !="NA"] )))
+     
+   
+    
+     index <- 0
+     
+
+    outcome$cluster[outcome$cluster=="NA"] <- NA
+    outcome$cluster <- as.numeric(outcome$cluster)
+    node_frame <- dplyr::left_join(node_frame, outcome, by = "from")
+  }
+
+## Preparing plotting data for ggplot graph format
+g <- igraph::as_data_frame(ResIN_igraph)
+g$from.x <- node_frame$x[match(g$from, node_frame$node_names)]
+g$from.y <- node_frame$y[match(g$from, node_frame$node_names)]
+g$to.x <- node_frame$x[match(g$to, node_frame$node_names)]
+g$to.y <- node_frame$y[match(g$to, node_frame$node_names)]
+
+edgelist_frame <- dplyr::left_join(g, node_frame, by = "from")
+
+edge_plot_i <- ggplot() +
+    geom_curve(data = edgelist_frame, aes(x = from.x, xend = to.x, y = from.y,
+                yend = to.y, size = weight^5), curvature = 0.15, color = "darkgrey", alpha = 0.8) +
+   geom_label(data = node_frame, aes(x = x, y = y, label = node_names, color = as.factor(cluster)), size = 5)+
+#    geom_label(data = edgelist_frame, aes(x = from.x, y = from.y, label = from, color = as.factor(cluster)), size = 5) +
+  #  geom_label(data = edgelist_frame, aes(x = to.x, y = to.y, label = to, color = as.factor(cluster)), size = 5) +
+                  ## Make sure to plot node labels both based on the to and from columns in the plotting frame
+    ggtitle(z)+
+    labs(color = "Clusters: ")+
+    scale_size_continuous(guide = "none")+
+    theme_bw()+
+    theme(axis.text.x = element_blank(), axis.title.x = element_blank(),
+          axis.text.y = element_blank(), axis.title.y = element_blank(),
+          axis.ticks = element_blank(), panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(), legend.position = "bottom",
+          legend.text = element_blank(), plot.title = element_text(hjust = 0.5, size=18))
+plot_list <- append(plot_list, edge_plot_i)
+plot(edge_plot_i)
+}
+
+```
+

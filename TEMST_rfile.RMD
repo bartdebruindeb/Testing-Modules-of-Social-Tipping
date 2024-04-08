@@ -1,0 +1,276 @@
+---
+output:
+  word_document: default
+  html_document: default
+---
+
+Atering Items keep rest constant
+
+```{r include=FALSE}
+#load relevant libraries
+#load packages
+
+rm(list=ls())
+
+#if(!require(installr)) {
+#  install.packages("installr"); 
+#  require(installr)
+#} #load
+
+#updateR()
+
+
+if(!require("pacman")) install.packages('pacman')
+pacman::p_load(NetworkToolbox,
+               # graph,
+               leidenAlg,
+               ggthemes,
+               knitr ,
+               ResIN,
+               data.table,
+               igraph,
+               qgraph,
+               tidyverse,
+               dplyr,
+               ggplot2,
+               naniar,
+               gdata,
+               doParallel,
+               wCorr,
+               qgraph,
+               MASS,
+               Matrix,
+               matrixcalc,
+               randcorr,
+               rWishart,
+               ggpubr,
+               ggdark )
+
+
+```
+
+set working directory
+
+```{r include=FALSE}
+
+### MANUAL INPUT: specify and set working directory ###
+workdirec <-"C:/Users/20225262/OneDrive - TU Eindhoven/Documents/GitHub/Testing-Modules-of-Social-Tipping" 
+
+
+setwd(workdirec)
+source("functions_behaviorspace_table_output_handling.R")
+
+### MANUAL INPUT: Optionally specify filepath (i.e. where the behaviorspace csv is situated) ###
+#NOTE: if csv files are placed in the workdirec, then leave filesPath unchanged
+filesPath <- ""
+### MANUAL INPUT: specify filenames ###
+filesNames <- c("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/TEMST-table.csv")
+
+
+```
+
+
+Read data and rename columns
+```{r include=FALSE}
+# READ DATA ---------------------------------------------------------------
+
+df <- loadData(filesPath, filesNames)
+
+
+# REMOVE IRRELEVANT VARIABLES ---------------------------------------------------------------
+
+df <- removeVariables(df)
+
+# RENAME VARIABLES ---------------------------------------------------------------
+printColumnNames(df)
+
+  ### MANUAL INPUT: specify new (easy-to-work-with) variable names ###
+  new_variable_names <- list(
+    "run_number",
+  "Social_Entrepeneurs", 
+    "Average_Node_Degree",
+  #  "Population_Size",
+     "Tipping_Strategy",
+    "Network_Design",
+    "Ticks_to_End",
+    "Frequency_1_1",
+    "Frequency_1_2",
+    "Frequency_1_3",
+    "Mean_Average_Path",
+    "Connections",
+    "Mean_Node_Degree",
+    "Mean_Cluster_Coefficient"
+  )
+
+#change variable names
+variable_names <- names(df)
+if (length(variable_names) == length(new_variable_names)) {
+  clean_df <- changeColumnNames(df, new_variable_names)
+} else {
+  print (length(variable_names))
+  print (length(new_variable_names))
+  print("ERROR: the number of variable names you specified is not the same as the number of variables present within the dataframe; please check again")
+}
+```
+
+
+Transform variables with right label
+```{r include=FALSE}
+#transform 'measurement' variable to numeric (as to avoid ggplot errors)
+clean_df$Ticks_to_End <- as.numeric(clean_df$Ticks_to_End)
+clean_df$Frequency_1_1 <- as.numeric(clean_df$Frequency_1_1)
+clean_df$Frequency_1_2 <- as.numeric(clean_df$Frequency_1_2)
+clean_df$Frequency_1_3 <- as.numeric(clean_df$Frequency_1_3)
+clean_df$Mean_Average_Path <- as.numeric(clean_df$Mean_Average_Path)
+clean_df$Connections<- as.numeric(clean_df$Connections)
+clean_df$Average_Node_Degree <- as.numeric(clean_df$Average_Node_Degree)
+clean_df$Mean_Cluster_Coefficient <- as.numeric(clean_df$Mean_Cluster_Coefficient)
+
+clean_df$Network_Design <- as.factor(clean_df$Network_Design)
+#clean_df$Stop_Time <- as.factor(clean_df$Stop_Time)
+#clean_df$Population_Size <- as.factor(clean_df$Population_Size)
+clean_df$Social_Entrepeneurs <- as.factor(clean_df$Social_Entrepeneurs)
+clean_df$Tipping_Strategy<- as.factor(clean_df$Tipping_Strategy)
+
+
+
+```
+
+
+Make Long Dataframe 
+```{r echo=FALSE, fig.height=7.5, fig.width=7.5, message=FALSE, warning=FALSE, results='asis'}
+    
+#df_long <- dplyr::select(clean_df)
+df_long <- gather(clean_df, variable, measurement, Ticks_to_End:Mean_Cluster_Coefficient)
+
+# SPECIFY VARIABLE MEASUREMENT SCALES -----------------------------------------------------
+### MANUAL INPUT: in order for ggplot and plotly to work, one must specify the following: ###
+#-> continuous decimal (floating) variables as 'numeric'
+#-> continuous integer variables as 'integer'
+#-> discrete (or categorical) variables as 'factor'
+
+#print an overview of variables and their measurement scales
+str(df_long)
+#transform 'measurement' variable to numeric (as to avoid ggplot errors)
+df_long$measurement <- as.numeric(df_long$measurement)
+#round 'measurement' variable to 4 decimals
+df_long$measurement <- round(df_long$measurement, 4)
+#convert categorical variables to factors (as to avoid ggplot errors)
+df_long$run_number <- as.integer(df_long$run_number)
+df_long$variable <- as.factor(df_long$variable)
+
+
+
+```
+
+Make Graphs
+---------------------------------
+Modularity
+
+```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+    
+df_long %>% filter((variable == "Frequency_1_1" ),
+                    # variable == "Frequency_1_2"|
+                    # variable == "Frequency_1_3"),
+                    Social_Entrepeneurs == 0.1,   Average_Node_Degree == 6)  %>%
+   dplyr::sample_frac(1) %>%
+   ggplot(aes(x = measurement, color = variable, fill = variable)) +
+     geom_histogram(position="identity", alpha = 0.4, breaks=c(0,1, 5, 10, 15, 20, 30 ,40 ,50,200, 500)) +
+  
+    xlab("Tipped") +
+    ylab("Count") + 
+#    labs(title = "Evolution of Modularity (Leiden_algorithm , rp == 0.4)",
+ #      subtitle = "Altering Factor: ITEMS, Levels == 6, reps == 5, DoC == WW, Pop == 250 ")+
+  scale_color_brewer(palette="Dark2") + 
+  scale_fill_brewer(palette="Dark2")  +
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+      facet_grid( Tipping_Strategy ~ Network_Design , labeller = label_both ) 
+
+
+
+```
+Clusters
+
+```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+    df_long %>% filter((variable == "Ticks_to_End"),
+                    Social_Entrepeneurs == 0.1,   Average_Node_Degree == 6)  %>%
+   dplyr::sample_frac(1) %>%
+   ggplot(aes(x = measurement, color = variable, fill = variable)) +
+geom_histogram(position="identity", alpha = 0.4) +
+    xlab("Ticks_to_End") +
+    ylab("Count") + 
+#    labs(title = "Evolution of Modularity (Leiden_algorithm , rp == 0.4)",
+ #      subtitle = "Altering Factor: ITEMS, Levels == 6, reps == 5, DoC == WW, Pop == 250 ")+
+  scale_color_brewer(palette="Dark2") + 
+  scale_fill_brewer(palette="Dark2")  +
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+      facet_grid( Tipping_Strategy ~ Network_Design , labeller = label_both ) 
+
+
+
+
+
+```
+Isolated Nodes
+
+
+```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+clean_df %>% #filter(Average_Node_Degree == 6)  %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = Ticks_to_End, y = Mean_Node_Degree, shape=Social_Entrepeneurs, color=Social_Entrepeneurs)) +
+    geom_point(size=4)+
+    xlab("Ticks_to_End") +
+    ylab("Mean_Node_Degree") + 
+ #   labs(title = "Evolution of Isolated Nodes  (Leiden_algorithm , rp == 0.4)",
+  #     subtitle = "Altering Factor: ITEMS, Levels == 6, reps == 5, DoC == WW, Pop == 250 ")+
+    scale_color_viridis_d()+
+    theme_bw()+
+  xlim(0, 11000)+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid( Tipping_Strategy ~ Network_Design , labeller = label_both ) 
+
+
+
+```
+Plotting Resin Network
+
+```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+clean_df %>% #filter(Average_Node_Degree == 6)  %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = Mean_Node_Degree, y = Mean_Cluster_Coefficient)) +
+    geom_point(size=2)+
+    xlab("Mean_Node_Degree") +
+    ylab("Mean_Cluster_Coefficient") + 
+   # labs(title = "Evolution of Isolated Nodes  (Leiden_algorithm , rp == 0.4)",
+  #     subtitle = "Altering Factor: ITEMS, Levels == 6, reps == 5, DoC == WW, Pop == 250 ")+
+    scale_color_viridis_d()+
+    theme_bw()+
+ # xlim(0, 11000)+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid( Tipping_Strategy ~ Network_Design , labeller = label_both ) 
+
+
+
+```
