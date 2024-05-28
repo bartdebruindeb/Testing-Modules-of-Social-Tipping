@@ -7,15 +7,17 @@ globals [
   rewired
   Max-Green
   Tipped?
-  stop?
-  b-majority-since
-  g-majority-since
+  majority-green?
+  surface-area-green
+  cum-surface-area-green
+  norm-csag
 
 ]
 breed[people person]
 undirected-link-breed [connections connection]
 people-own [
   my-behavior
+  my-behavior-t-1
   my-community
   social-entrepeneur?
   number-of-connections
@@ -54,7 +56,6 @@ end
 
 to set-default-settings
   set people-per-community 25
-  set stopping-threshold 0.05
   set dekkers-power 3.5
   set seed 2
   set average-node-degree 8
@@ -64,7 +65,6 @@ to set-default-settings
   set rewiring-proportion 0.16
   set k1 0.001
   set static-seed? false
-  set stop-time-iteration-cycles 5
   set k2 0.0011
   set layout "spring"
   set social-entrepeneurs 0.10
@@ -215,51 +215,32 @@ to setup-social-entrepeneurs ;;; Assigns which agents are the social entrepreneu
   let n-social-entrepreneurs ceiling (social-entrepeneurs * total-population)
   if tipping-strategy = "Shotgun" [
     ask n-of n-social-entrepreneurs  people [
-      set my-behavior 1
-      set color green
-      set social-entrepeneur? true
-      set size 5]]
+      setup-as-social-entrepeneur]]
 
     if tipping-strategy = "Silver-Bullets" [
       ask max-n-of n-social-entrepreneurs people [count my-connections] [
-      set my-behavior 1
-      set color green
-      set social-entrepeneur? true
-      set size 5]]
+      setup-as-social-entrepeneur]]
 
       if tipping-strategy = "Outskirts" [
       ask min-n-of n-social-entrepreneurs people [count my-connections] [
-      set my-behavior 1
-      set color green
-      set social-entrepeneur? true
-      set size 5]]
+      setup-as-social-entrepeneur]]
 
   if tipping-strategy = "Bridges"[
     ask max-n-of n-social-entrepreneurs people [nw:betweenness-centrality] [
-    set my-behavior 1
-      set color green
-      set social-entrepeneur? true
-      set size 5]]
+      setup-as-social-entrepeneur]]
 
 
 
-      if tipping-strategy = "Snowball" [
-
+  if tipping-strategy = "Snowball" [
     ; Ensure that agents that are connected to one another are also spatially closely located to another.
     let factor sqrt count turtles
     let index  n-social-entrepreneurs
     let k one-of people
     while [index > 0] [
       ask k [
-          set my-behavior 1
-        set color green
-        set size 5
-        set social-entrepeneur? true
+        setup-as-social-entrepeneur
         ask up-to-n-of index connection-neighbors [
-            set my-behavior 1
-      set color green
-          set social-entrepeneur? true
-          set size 5
+          setup-as-social-entrepeneur
         ]
         set index floor (social-entrepeneurs * total-population) - count people with [social-entrepeneur? = true]
         set k min-one-of people with [my-behavior = 0] [distance myself]
@@ -269,15 +250,26 @@ to setup-social-entrepeneurs ;;; Assigns which agents are the social entrepreneu
 
 end
 
+to setup-as-social-entrepeneur
+  set my-behavior-t-1 1
+  set my-behavior 1
+  set color green
+  set size 5
+  set social-entrepeneur? true
+end
+
 to setup-metrics
   ask people [
     set number-of-connections count connection-neighbors
   ]
   set tipped? false
-  set stop? false
-  set stop-time stop-time-iteration-cycles * total-population
+  set cum-surface-area-green calc-surface-area-green
 end
 
+to-report calc-surface-area-green
+  report count people with [my-behavior = 1] / count people
+
+end
 
 to layout-network
   if layout = "radial" and count turtles > 1 [
@@ -308,25 +300,30 @@ end
 
 
 to consider-adopting-new-behavior
-  ask one-of people [
+  ask people [
     if module = "stochastic" [
         ifelse my-behavior = 0 [
-          if random-float 1 < (count connection-neighbors with [my-behavior = 1] + k1) / (count connection-neighbors + k2) [                   ; Where k1 < k2
+          if random-float 1 < (count connection-neighbors with [my-behavior-t-1 = 1] + k1) / (count connection-neighbors + k2) [                   ; Where k1 < k2
             set my-behavior 1
             set color green
           ]
         ] [
-          if random-float 1 < (count connection-neighbors with [my-behavior = 0] + k1) / (count connection-neighbors + k2) [
+          if random-float 1 < (count connection-neighbors with [my-behavior-t-1 = 0] + k1) / (count connection-neighbors + k2) [
             set my-behavior 0
             set color blue
           ]
         ]
     ]
   ]
+  ask people [
+    set my-behavior-t-1 my-behavior
+  ]
 end
 
 
 to update-metrics
+  set cum-surface-area-green cum-surface-area-green + calc-surface-area-green
+  set norm-csag cum-surface-area-green / (ticks + 1)
   let total-people count people
   let g count people with [my-behavior = 1]
   let gp 0
@@ -335,51 +332,19 @@ to update-metrics
   if Tipped? != true and g > b [
     set Tipped? true]
 
+  ifelse g > b [
+    set majority-green? true
+  ][
+   set majority-green? false
+  ]
+
   if gp > Max-Green [
     set Max-Green gp
   ]
-  if b > 0 [
-    if b / total-people > 0.05 [set b-majority-since ticks]
-  ]
-  if g > 0 [
-    if g / total-people > 0.05 [set g-majority-since ticks]
-  ]
-    if (ticks - g-majority-since) > stop-time or (ticks - b-majority-since) > stop-time [
-      set stop? true
-    ]
-
-end
-
-to-report stop-simulation?
-  ifelse stop? [
-    report true]
-  [report false]
-
 end
 
 
 ;;; Reporters for Social Network Analysis
-
-to set-longest-shortest-path
-  let k sort-on [who] people
-  let m sort-on [who] people
-  set lsp 0
-  foreach k [
-    x -> ask x [
-      foreach m [
-
-        y ->
-        ifelse nw:distance-to y = false [
-          set lsp 100] [
-        if nw:distance-to y > lsp [
-          set lsp nw:distance-to y]
-      ]
-      ]
-      set m but-first m
-    ]
-  ]
-
-end
 
 
 
@@ -393,9 +358,9 @@ end
 
 to-report clustering-of-greens
   let mean-path-to (list)
-  ask people with [my-behavior = 0] [
+  ask people with [my-behavior = 1] [
     let path-to (list)
-    ask other people with [my-behavior = 0] [
+    ask other people with [my-behavior = 1] [
       set path-to lput length (nw:path-to myself) path-to
     ]
     set mean-path-to lput mean path-to mean-path-to
@@ -417,9 +382,9 @@ end
 @#$#@#$#@
 GRAPHICS-WINDOW
 159
-20
+10
 567
-429
+419
 -1
 -1
 3.9604
@@ -465,7 +430,7 @@ BUTTON
 67
 84
 go
-go\nif stop-simulation? [stop]
+go\n
 T
 1
 T
@@ -477,40 +442,40 @@ NIL
 1
 
 CHOOSER
-573
-213
-711
-258
+570
+286
+708
+331
 tipping-strategy
 tipping-strategy
 "Snowball" "Shotgun" "Silver-Bullets" "Outskirts" "Bridges"
-4
+0
 
 SLIDER
-573
-178
-714
-211
+570
+251
+711
+284
 social-entrepeneurs
 social-entrepeneurs
 0
 0.30
-0.1
+0.12
 0.005
 1
 NIL
 HORIZONTAL
 
 PLOT
-966
-101
-1385
-374
+722
+10
+907
+130
 Connection distribution
 NIL
 NIL
 0.0
-100.0
+50.0
 0.0
 10.0
 true
@@ -542,10 +507,10 @@ nw:mean-path-length
 11
 
 PLOT
-966
-388
-1472
-589
+1016
+163
+1522
+349
 Habit distribution
 NIL
 NIL
@@ -561,15 +526,15 @@ PENS
 "Green" 1.0 0 -13840069 true "" "plot count people with [my-behavior = 1] "
 
 SLIDER
-437
-442
-609
-475
+158
+432
+330
+465
 rewiring-proportion
 rewiring-proportion
 0
 1
-0.31
+0.0
 0.01
 1
 NIL
@@ -587,10 +552,10 @@ mean [ nw:clustering-coefficient ] of people
 11
 
 MONITOR
-797
-590
-961
-635
+637
+644
+801
+689
 NIL
 global-clustering-coefficient
 17
@@ -616,8 +581,8 @@ k1
 k1
 0
 k2
-0.001
-0.001
+1.0E-6
+0.000001
 1
 NIL
 HORIZONTAL
@@ -630,9 +595,9 @@ SLIDER
 k2
 k2
 k1
-0.5
-0.0011
-0.001
+0.00001
+1.1E-6
+0.0000001
 1
 NIL
 HORIZONTAL
@@ -655,15 +620,15 @@ NIL
 1
 
 SLIDER
-437
-480
-609
-513
+158
+470
+330
+503
 dekkers-power
 dekkers-power
 0
 10
-2.0
+3.5
 0.5
 1
 NIL
@@ -744,26 +709,11 @@ Tipped?
 1
 11
 
-SLIDER
-762
-139
-950
-172
-stop-time-iteration-cycles
-stop-time-iteration-cycles
-0
-10
-5.0
-1
-1
-NIL
-HORIZONTAL
-
 SWITCH
 0
-119
-116
 152
+116
+185
 static-seed?
 static-seed?
 1
@@ -772,58 +722,40 @@ static-seed?
 
 INPUTBOX
 0
-152
+185
 155
-212
+245
 seed
 2.0
 1
 0
 Number
 
-PLOT
-1116
-10
-1316
-160
-plot 1
-NIL
-NIL
-0.0
-10.0
-0.0
-1.0
-true
-false
-"" ""
-PENS
-"default" 1.0 0 -16777216 true "" "plot mean [(count connection-neighbors with [my-behavior = 1] + k1) / (count connection-neighbors + k2)] of people"
-
 SLIDER
-436
-517
-608
-550
+157
+507
+329
+540
 n-communities
 n-communities
 1
 25
-1.0
+5.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-436
-554
-609
-587
+157
+544
+330
+577
 people-per-community
 people-per-community
 6
 400
-400.0
+100.0
 1
 1
 NIL
@@ -865,43 +797,28 @@ CHOOSER
 layout
 layout
 "spring" "circle" "tutte" "radial"
-0
+1
 
 SLIDER
-435
-590
-607
-623
+156
+580
+331
+613
 average-node-degree
 average-node-degree
 2
 30
-6.0
+8.0
 1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-800
-174
-951
-207
-stopping-threshold
-stopping-threshold
-0
-1
-0.05
-0.01
 1
 NIL
 HORIZONTAL
 
 BUTTON
 0
-216
-133
 249
+133
+282
 NIL
 set-default-settings
 NIL
@@ -915,19 +832,151 @@ NIL
 1
 
 SLIDER
-434
-626
-606
-659
+155
+616
+332
+649
 clustering-coefficient
 clustering-coefficient
 0
 12
-1.8
-0.1
+6.9
+0.05
 1
 NIL
 HORIZONTAL
+
+PLOT
+1016
+349
+1526
+499
+Network Position of innovaters compared to total population
+NIL
+NIL
+0.0
+10.0
+0.0
+1.0
+true
+true
+"" ""
+PENS
+"betweenness centrality" 1.0 0 -16777216 true "" "plot (mean [nw:betweenness-centrality] of people with [my-behavior = 1]) / (mean [nw:betweenness-centrality] of people) "
+"eigenvector-centrality" 1.0 0 -7500403 true "" "plot (mean [nw:eigenvector-centrality] of people with [my-behavior = 1]) / (mean [nw:eigenvector-centrality] of people )"
+"page-rank" 1.0 0 -2674135 true "" "plot (mean [nw:page-rank] of people with [my-behavior = 1]) / (mean [nw:page-rank] of people )\n"
+"closeness-centrality" 1.0 0 -955883 true "" "plot (mean [nw:closeness-centrality] of people with [my-behavior = 1]) / (mean [nw:closeness-centrality] of people )"
+
+PLOT
+1015
+509
+1644
+659
+Average behavior of Top 5 agents with HIGHEST score for:
+NIL
+NIL
+0.0
+10.0
+0.0
+1.0
+true
+true
+"" ""
+PENS
+"betweenness-centrality" 1.0 0 -16777216 true "" "plot mean [my-behavior] of max-n-of 5 people [nw:betweenness-centrality]"
+"eigenvector-centrality" 1.0 0 -7500403 true "" "plot mean [my-behavior] of max-n-of 5 people [nw:EIGENVECTOR-centrality]"
+"page-rank" 1.0 0 -2674135 true "" "plot mean [my-behavior] of max-n-of 5 people [nw:PAGE-RANK]"
+"Closeness-centrality" 1.0 0 -955883 true "" "plot mean [my-behavior] of max-n-of 5 people [nw:closeness-centrality]"
+
+PLOT
+1014
+660
+1643
+810
+Average behavior of Top 5 agents with LOWEST score for:
+NIL
+NIL
+0.0
+10.0
+0.0
+1.0
+true
+true
+"" ""
+PENS
+"betweenness-centrality" 1.0 0 -16777216 true "" "plot mean [my-behavior] of min-n-of 5 people [nw:betweenness-centrality]"
+"Eigenvector-centrality" 1.0 0 -7500403 true "" "plot mean [my-behavior] of min-n-of 5 people [nw:EIGENVECTOR-centrality]"
+"Page-Rank" 1.0 0 -2674135 true "" "plot mean [my-behavior] of min-n-of 5 people [nw:PAGE-RANK]"
+"closeness-centrality" 1.0 0 -955883 true "" "plot mean [my-behavior] of min-n-of 5 people [nw:closeness-centrality]"
+
+PLOT
+1018
+11
+1522
+161
+CUM Surface-Area GREEN vs. BLUE
+NIL
+NIL
+0.0
+10.0
+0.0
+1.0
+true
+false
+"" ""
+PENS
+"Blue-SA" 1.0 1 -13345367 true "" "plot 1"
+"Green-SA" 1.0 1 -13840069 true "" "plot norm-csag"
+
+BUTTON
+0
+121
+89
+154
+Go N times
+repeat N [go]
+NIL
+1
+T
+OBSERVER
+NIL
+NIL
+NIL
+NIL
+1
+
+INPUTBOX
+90
+94
+140
+154
+N
+100.0
+1
+0
+Number
+
+MONITOR
+922
+256
+1016
+301
+Surface-Green
+precision norm-csag 5
+17
+1
+11
+
+MONITOR
+915
+300
+1018
+345
+NIL
+majority-green?
+17
+1
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
