@@ -1,8 +1,8 @@
 extensions[nw stats]
 
 globals [
+  people-per-community
   stop-time
-  total-population
   lsp
   rewired
   Max-Green
@@ -11,6 +11,11 @@ globals [
   surface-area-green
   cum-surface-area-green
   norm-csag
+  norm-csab
+  sim-ended?
+  tick-ended
+  gcc
+  mal
 
 ]
 breed[people person]
@@ -18,6 +23,7 @@ undirected-link-breed [connections connection]
 people-own [
   my-behavior
   my-behavior-t-1
+  ticks-to-new-decision
   my-community
   social-entrepeneur?
   number-of-connections
@@ -26,21 +32,23 @@ people-own [
 
 to setup
   clear-all
+  reset-ticks
   if static-seed? [random-seed seed]
   ask patches [set pcolor white]
   setup-people
   setup-network
-  layout-network
+ ; layout-network
   rewire
   setup-social-entrepeneurs
   setup-metrics
 
-  reset-ticks
+
 end
 
 to setup-people
+  set people-per-community population-size / n-communities
   if average-node-degree > people-per-community [error "average-node-degree is bigger than the people-per-community"]
-  set total-population n-communities * people-per-community
+
     let index 1
   repeat n-communities [
 
@@ -48,6 +56,7 @@ to setup-people
       set my-community index
           set size 3
           set color blue
+      set ticks-to-new-decision random duration-to-decision
         ]
     set index index + 1
   ]
@@ -55,19 +64,20 @@ end
 
 
 to set-default-settings
-  set people-per-community 25
-  set dekkers-power 3.5
-  set seed 2
-  set average-node-degree 8
+ ; set dekkers-power 4.5
+  ;set seed 2
+ ; set average-node-degree 4
   set module "stochastic"
   set tipping-strategy "Shotgun"
-  set n-communities 5
-  set rewiring-proportion 0.16
-  set k1 0.001
+  set n-communities 4
+  set rewiring-proportion 0.15
+  set clustering-coefficient 2
+;  set k1 0.000001
   set static-seed? false
-  set k2 0.0011
-  set layout "spring"
-  set social-entrepeneurs 0.10
+ ; set k2 0.0000011
+ ; set layout "spring"
+ ; set social-entrepeneurs 0.10
+  set sim-ended? false
 
 end
 
@@ -81,7 +91,7 @@ to setup-network
   ; Where q is the clustering component. For high values of q, agents make connections with more closely labeled nodes.
   ; Lastly the connections are rewired with random agents irrespectively of their community using the rewiring-proportion and dekkers-power. (See rewire procedure).
 
-  let max-iterations average-node-degree * total-population / 2
+  let max-iterations average-node-degree * population-size / 2
   let iterations-for-network-formation 0
   ; Step 1 Connect different communities with one another with by connecting the highest who of one community with the middle who of the other community.
   if n-communities > 1 [
@@ -194,17 +204,19 @@ to-report new-rewired-node [NodeB]
     x ->
     if r-value < x and found-it? = false [
       set position-in-list position x probability-list
-      set found-it? true]
+      set found-it? true
+    ]
   ]
 
 
   ;Pick randomly one of the agents as a new friends that have the selected node-degree
 
   let potential-friends other people with [count connection-neighbors = item position-in-list unique-degree-of-nodes and not member? myself connection-neighbors and who != [who] of NodeB]
-
+  if one-of potential-friends = nobody [error "one-of potential-friends = nobody"]
   report one-of potential-friends
 
 end
+
 
 
 to setup-social-entrepeneurs ;;; Assigns which agents are the social entrepreneurs (green) at the start of the simulation. Based on Centola (2018) you choose between Shotgun (assinging the
@@ -212,7 +224,7 @@ to setup-social-entrepeneurs ;;; Assigns which agents are the social entrepreneu
  ; added to instead of selecting the silver bullets (high degree nodes) the Outskirts (the low degree nodes).
 
 
-  let n-social-entrepreneurs ceiling (social-entrepeneurs * total-population)
+  let n-social-entrepreneurs ceiling (social-entrepeneurs * population-size)
   if tipping-strategy = "Shotgun" [
     ask n-of n-social-entrepreneurs  people [
       setup-as-social-entrepeneur]]
@@ -222,7 +234,7 @@ to setup-social-entrepeneurs ;;; Assigns which agents are the social entrepreneu
       setup-as-social-entrepeneur]]
 
       if tipping-strategy = "Outskirts" [
-      ask min-n-of n-social-entrepreneurs people [count my-connections] [
+      ask min-n-of n-social-entrepreneurs people [nw:betweenness-centrality] [
       setup-as-social-entrepeneur]]
 
   if tipping-strategy = "Bridges"[
@@ -242,7 +254,7 @@ to setup-social-entrepeneurs ;;; Assigns which agents are the social entrepreneu
         ask up-to-n-of index connection-neighbors [
           setup-as-social-entrepeneur
         ]
-        set index floor (social-entrepeneurs * total-population) - count people with [social-entrepeneur? = true]
+        set index floor (social-entrepeneurs * population-size) - count people with [social-entrepeneur? = true]
         set k min-one-of people with [my-behavior = 0] [distance myself]
       ]
     ]
@@ -264,6 +276,12 @@ to setup-metrics
   ]
   set tipped? false
   set cum-surface-area-green calc-surface-area-green
+  set norm-csag cum-surface-area-green
+  set norm-csab 1 - norm-csag
+  set sim-ended? false
+  set tick-ended 0
+  set gcc global-clustering-coefficient
+  set mal nw:mean-path-length
 end
 
 to-report calc-surface-area-green
@@ -279,7 +297,7 @@ to layout-network
   if layout = "spring" [
     let factor people-per-community * 2
     if factor = 0 [ set factor 1 ]
-    repeat 1000 [layout-spring turtles links (1 / factor) (14 / factor) (100 / factor)]
+    repeat 1000 [layout-spring turtles links (1 / factor) (140 / factor) (10 / factor)]
   ]
   if layout = "circle" [
     layout-circle sort turtles max-pxcor * 0.9
@@ -302,28 +320,37 @@ end
 to consider-adopting-new-behavior
   ask people [
     if module = "stochastic" [
+      ifelse ticks-to-new-decision = 0 [
         ifelse my-behavior = 0 [
-          if random-float 1 < (count connection-neighbors with [my-behavior-t-1 = 1] + k1) / (count connection-neighbors + k2) [                   ; Where k1 < k2
+          ifelse random-float 1 < (count connection-neighbors with [my-behavior-t-1 = 1] + k1) / (count connection-neighbors + k2) [                   ; Where k1 < k2
             set my-behavior 1
             set color green
-          ]
+            set ticks-to-new-decision duration-to-decision
+          ] [
+            set ticks-to-new-decision duration-to-decision]
         ] [
-          if random-float 1 < (count connection-neighbors with [my-behavior-t-1 = 0] + k1) / (count connection-neighbors + k2) [
+          ifelse random-float 1 < (count connection-neighbors with [my-behavior-t-1 = 0] + k1) / (count connection-neighbors + k2) [
             set my-behavior 0
             set color blue
-          ]
+            set ticks-to-new-decision duration-to-decision
+          ][
+            set ticks-to-new-decision duration-to-decision]
         ]
+      ] [
+        set ticks-to-new-decision ticks-to-new-decision - 1
+      ]
     ]
   ]
-  ask people [
-    set my-behavior-t-1 my-behavior
-  ]
+    ask people [
+      set my-behavior-t-1 my-behavior
+    ]
 end
 
 
 to update-metrics
   set cum-surface-area-green cum-surface-area-green + calc-surface-area-green
   set norm-csag cum-surface-area-green / (ticks + 1)
+  set norm-csab 1 - norm-csag
   let total-people count people
   let g count people with [my-behavior = 1]
   let gp 0
@@ -333,14 +360,25 @@ to update-metrics
     set Tipped? true]
 
   ifelse g > b [
-    set majority-green? true
+    set majority-green? 1
   ][
-   set majority-green? false
+   set majority-green? 0
   ]
 
   if gp > Max-Green [
     set Max-Green gp
   ]
+
+  if b = 0 or g = 0 and sim-ended? = false [
+    set sim-ended? true
+    set tick-ended ticks
+  ]
+end
+
+to-report report-sim-ended
+  ifelse sim-ended? = true and ticks > 1
+  [report true]
+  [report false]
 end
 
 
@@ -401,8 +439,8 @@ GRAPHICS-WINDOW
 50
 -50
 50
-0
-0
+1
+1
 1
 ticks
 30.0
@@ -430,7 +468,7 @@ BUTTON
 67
 84
 go
-go\n
+go\nif report-sim-ended [stop]
 T
 1
 T
@@ -442,26 +480,26 @@ NIL
 1
 
 CHOOSER
-570
-286
-708
-331
+336
+469
+474
+514
 tipping-strategy
 tipping-strategy
 "Snowball" "Shotgun" "Silver-Bullets" "Outskirts" "Bridges"
-0
+1
 
 SLIDER
-570
-251
-711
-284
+336
+434
+477
+467
 social-entrepeneurs
 social-entrepeneurs
 0
-0.30
-0.12
-0.005
+1
+0.1
+0.01
 1
 NIL
 HORIZONTAL
@@ -534,7 +572,7 @@ rewiring-proportion
 rewiring-proportion
 0
 1
-0.0
+0.05
 0.01
 1
 NIL
@@ -628,7 +666,7 @@ dekkers-power
 dekkers-power
 0
 10
-3.5
+4.5
 0.5
 1
 NIL
@@ -739,7 +777,7 @@ SLIDER
 n-communities
 n-communities
 1
-25
+7
 5.0
 1
 1
@@ -751,12 +789,12 @@ SLIDER
 544
 330
 577
-people-per-community
-people-per-community
-6
-400
-100.0
-1
+Population-Size
+Population-Size
+420
+98
+420.0
+420
 1
 NIL
 HORIZONTAL
@@ -797,7 +835,7 @@ CHOOSER
 layout
 layout
 "spring" "circle" "tutte" "radial"
-1
+0
 
 SLIDER
 156
@@ -807,8 +845,8 @@ SLIDER
 average-node-degree
 average-node-degree
 2
-30
-8.0
+10
+5.0
 1
 1
 NIL
@@ -840,7 +878,7 @@ clustering-coefficient
 clustering-coefficient
 0
 12
-6.9
+1.55
 0.05
 1
 NIL
@@ -862,31 +900,10 @@ true
 true
 "" ""
 PENS
-"betweenness centrality" 1.0 0 -16777216 true "" "plot (mean [nw:betweenness-centrality] of people with [my-behavior = 1]) / (mean [nw:betweenness-centrality] of people) "
-"eigenvector-centrality" 1.0 0 -7500403 true "" "plot (mean [nw:eigenvector-centrality] of people with [my-behavior = 1]) / (mean [nw:eigenvector-centrality] of people )"
-"page-rank" 1.0 0 -2674135 true "" "plot (mean [nw:page-rank] of people with [my-behavior = 1]) / (mean [nw:page-rank] of people )\n"
-"closeness-centrality" 1.0 0 -955883 true "" "plot (mean [nw:closeness-centrality] of people with [my-behavior = 1]) / (mean [nw:closeness-centrality] of people )"
-
-PLOT
-1015
-509
-1644
-659
-Average behavior of Top 5 agents with HIGHEST score for:
-NIL
-NIL
-0.0
-10.0
-0.0
-1.0
-true
-true
-"" ""
-PENS
-"betweenness-centrality" 1.0 0 -16777216 true "" "plot mean [my-behavior] of max-n-of 5 people [nw:betweenness-centrality]"
-"eigenvector-centrality" 1.0 0 -7500403 true "" "plot mean [my-behavior] of max-n-of 5 people [nw:EIGENVECTOR-centrality]"
-"page-rank" 1.0 0 -2674135 true "" "plot mean [my-behavior] of max-n-of 5 people [nw:PAGE-RANK]"
-"Closeness-centrality" 1.0 0 -955883 true "" "plot mean [my-behavior] of max-n-of 5 people [nw:closeness-centrality]"
+"betweenness centrality" 1.0 0 -16777216 true "" "plot mean [nw:betweenness-centrality] of people"
+"eigenvector-centrality" 1.0 0 -7500403 true "" "plot mean [nw:eigenvector-centrality] of people "
+"page-rank" 1.0 0 -2674135 true "" "plot mean [nw:page-rank] of people \n"
+"closeness-centrality" 1.0 0 -955883 true "" "plot mean [nw:closeness-centrality] of people "
 
 PLOT
 1014
@@ -977,6 +994,32 @@ majority-green?
 17
 1
 11
+
+MONITOR
+945
+211
+1017
+256
+NIL
+tick-ended
+17
+1
+11
+
+SLIDER
+672
+240
+844
+273
+duration-to-decision
+duration-to-decision
+0
+100
+25.0
+1
+1
+NIL
+HORIZONTAL
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -1366,6 +1409,8 @@ NetLogo 6.4.0
       <value value="&quot;Shotgun&quot;"/>
       <value value="&quot;Silver-Bullets&quot;"/>
       <value value="&quot;Snowball&quot;"/>
+      <value value="&quot;Outskirts&quot;"/>
+      <value value="&quot;Bridges&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="exclude-center-from-social-entrpeneur?">
       <value value="false"/>
@@ -1376,14 +1421,16 @@ NetLogo 6.4.0
       <value value="&quot;Fireworks&quot;"/>
     </enumeratedValueSet>
   </experiment>
-  <experiment name="experiment (1)" repetitions="50" runMetricsEveryStep="false">
+  <experiment name="experiment (1)" repetitions="5" runMetricsEveryStep="true">
     <setup>setup</setup>
     <go>go</go>
-    <timeLimit steps="200000"/>
+    <timeLimit steps="10000"/>
     <exitCondition>stop-simulation?</exitCondition>
-    <metric>frequency</metric>
-    <metric>frequency+</metric>
-    <metric>frequency++</metric>
+    <metric>norm-csag</metric>
+    <metric>norm-csab</metric>
+    <metric>tick-ended</metric>
+    <metric>sim-ended?</metric>
+    <metric>green-majority?</metric>
     <metric>nw:mean-path-length</metric>
     <metric>COUNT CONNECTIONS</metric>
     <metric>mean [count connection-neighbors] of people</metric>
@@ -1397,8 +1444,8 @@ NetLogo 6.4.0
     <enumeratedValueSet variable="stop-time">
       <value value="50"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="total-population">
-      <value value="300"/>
+    <enumeratedValueSet variable="Population-size">
+      <value value="420"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="k2">
       <value value="0.3"/>
@@ -1423,14 +1470,526 @@ NetLogo 6.4.0
       <value value="&quot;Shotgun&quot;"/>
       <value value="&quot;Silver-Bullets&quot;"/>
       <value value="&quot;Snowball&quot;"/>
+      <value value="&quot;Bridges&quot;"/>
+      <value value="&quot;Outskirts&quot;"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="exclude-center-from-social-entrpeneur?">
+  </experiment>
+  <experiment name="Experiment 2" repetitions="5" runMetricsEveryStep="true">
+    <preExperiment>set-default-settings</preExperiment>
+    <setup>setup</setup>
+    <go>go</go>
+    <timeLimit steps="10000"/>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>count people with [my-behavior = 1]</metric>
+    <metric>gcc</metric>
+    <metric>mal</metric>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="420"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="2"/>
+      <value value="3.5"/>
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="4"/>
+      <value value="8"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;stochastic&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="tipping-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;Outskirts&quot;"/>
+      <value value="&quot;Bridges&quot;"/>
+      <value value="&quot;Snowball&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="3"/>
+      <value value="5"/>
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0"/>
+      <value value="0.05"/>
+      <value value="0.15"/>
+      <value value="0.3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
       <value value="false"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="network-design">
-      <value value="&quot;Fishing-Net&quot;"/>
-      <value value="&quot;Small-World&quot;"/>
-      <value value="&quot;Fireworks&quot;"/>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;circle&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="0.1"/>
+      <value value="1"/>
+      <value value="2"/>
+      <value value="8"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="social-entrepeneurs">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment10NCC" repetitions="75" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>mean [nw:closeness-centrality] of people</metric>
+    <metric>mean [nw:eigenvector-centrality] of people</metric>
+    <metric>mean [nw:betweenness-centrality] of people</metric>
+    <metric>mean [nw:page-rank] of people</metric>
+    <metric>nw:mean-path-length</metric>
+    <metric>variance [nw:closeness-centrality] of people</metric>
+    <metric>variance [nw:eigenvector-centrality] of people</metric>
+    <metric>variance [nw:betweenness-centrality] of people</metric>
+    <metric>variance [nw:page-rank] of people</metric>
+    <metric>majority-green?</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="4.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;stochastic&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="tipping-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Snowball&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="2"/>
+      <value value="3"/>
+      <value value="5"/>
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.05"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="820"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="2"/>
+      <value value="3"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="social-entrepeneurs">
+      <value value="0.1"/>
+      <value value="0.3"/>
+      <value value="0.5"/>
+      <value value="0.7"/>
+      <value value="0.9"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment9DR" repetitions="100" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>mean [nw:closeness-centrality] of people</metric>
+    <metric>mean [nw:eigenvector-centrality] of people</metric>
+    <metric>mean [nw:betweenness-centrality] of people</metric>
+    <metric>mean [nw:page-rank] of people</metric>
+    <metric>nw:mean-path-length</metric>
+    <metric>variance [nw:closeness-centrality] of people</metric>
+    <metric>variance [nw:eigenvector-centrality] of people</metric>
+    <metric>variance [nw:betweenness-centrality] of people</metric>
+    <metric>variance [nw:page-rank] of people</metric>
+    <metric>majority-green?</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+      <value value="2"/>
+      <value value="3"/>
+      <value value="5"/>
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;stochastic&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="tipping-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Snowball&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.15"/>
+      <value value="0.25"/>
+      <value value="0.35"/>
+      <value value="0.45"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="social-entrepeneurs">
+      <value value="0.1"/>
+      <value value="0.2"/>
+      <value value="0.3"/>
+      <value value="0.4"/>
+      <value value="0.5"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experimentNDCC" repetitions="100" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>mean [nw:closeness-centrality] of people</metric>
+    <metric>mean [nw:eigenvector-centrality] of people</metric>
+    <metric>mean [nw:betweenness-centrality] of people</metric>
+    <metric>mean [nw:page-rank] of people</metric>
+    <metric>nw:mean-path-length</metric>
+    <metric>variance [nw:closeness-centrality] of people</metric>
+    <metric>variance [nw:eigenvector-centrality] of people</metric>
+    <metric>variance [nw:betweenness-centrality] of people</metric>
+    <metric>variance [nw:page-rank] of people</metric>
+    <metric>majority-green?</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="4.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="3"/>
+      <value value="5"/>
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;stochastic&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="tipping-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Snowball&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.15"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="420"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="2"/>
+      <value value="3"/>
+      <value value="5"/>
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="social-entrepeneurs">
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.15"/>
+      <value value="0.2"/>
+      <value value="0.25"/>
+      <value value="0.3"/>
+      <value value="0.35"/>
+      <value value="0.4"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment4-100" repetitions="200" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>mean [nw:closeness-centrality] of people</metric>
+    <metric>mean [nw:eigenvector-centrality] of people</metric>
+    <metric>mean [nw:betweenness-centrality] of people</metric>
+    <metric>mean [nw:page-rank] of people</metric>
+    <metric>nw:mean-path-length</metric>
+    <metric>variance [nw:closeness-centrality] of people</metric>
+    <metric>variance [nw:eigenvector-centrality] of people</metric>
+    <metric>variance [nw:betweenness-centrality] of people</metric>
+    <metric>variance [nw:page-rank] of people</metric>
+    <metric>majority-green?</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="4.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;stochastic&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="tipping-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.15"/>
+      <value value="0.2"/>
+      <value value="0.25"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="420"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="social-entrepeneurs">
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.15"/>
+      <value value="0.2"/>
+      <value value="0.25"/>
+      <value value="0.3"/>
+      <value value="0.35"/>
+      <value value="0.4"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment5-100" repetitions="200" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>mean [nw:closeness-centrality] of people</metric>
+    <metric>mean [nw:eigenvector-centrality] of people</metric>
+    <metric>mean [nw:betweenness-centrality] of people</metric>
+    <metric>mean [nw:page-rank] of people</metric>
+    <metric>nw:mean-path-length</metric>
+    <metric>variance [nw:closeness-centrality] of people</metric>
+    <metric>variance [nw:eigenvector-centrality] of people</metric>
+    <metric>variance [nw:betweenness-centrality] of people</metric>
+    <metric>variance [nw:page-rank] of people</metric>
+    <metric>majority-green?</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="4.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;stochastic&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="tipping-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.15"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="420"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="2"/>
+      <value value="3"/>
+      <value value="4"/>
+      <value value="5"/>
+      <value value="6"/>
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="social-entrepeneurs">
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.15"/>
+      <value value="0.2"/>
+      <value value="0.25"/>
+      <value value="0.3"/>
+      <value value="0.35"/>
+      <value value="0.4"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment8DRCC" repetitions="75" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>mean [nw:closeness-centrality] of people</metric>
+    <metric>mean [nw:eigenvector-centrality] of people</metric>
+    <metric>mean [nw:betweenness-centrality] of people</metric>
+    <metric>mean [nw:page-rank] of people</metric>
+    <metric>nw:mean-path-length</metric>
+    <metric>variance [nw:closeness-centrality] of people</metric>
+    <metric>variance [nw:eigenvector-centrality] of people</metric>
+    <metric>variance [nw:betweenness-centrality] of people</metric>
+    <metric>variance [nw:page-rank] of people</metric>
+    <metric>majority-green?</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+      <value value="2"/>
+      <value value="3"/>
+      <value value="5"/>
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;stochastic&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="tipping-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Snowball&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.05"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="2"/>
+      <value value="3"/>
+      <value value="5"/>
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="social-entrepeneurs">
+      <value value="0.1"/>
+      <value value="0.3"/>
+      <value value="0.5"/>
+      <value value="0.7"/>
+      <value value="0.9"/>
     </enumeratedValueSet>
   </experiment>
 </experiments>

@@ -64,7 +64,7 @@ source("functions_behaviorspace_table_output_handling.R")
 #NOTE: if csv files are placed in the workdirec, then leave filesPath unchanged
 filesPath <- ""
 ### MANUAL INPUT: specify filenames ###
-filesNames <- c("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/TEMST Clean Experiment 2-table.csv")
+filesNames <- c("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Resin_dummy mem and cpu test-table.csv")
 
 
 ```
@@ -86,19 +86,8 @@ printColumnNames(df)
 
   ### MANUAL INPUT: specify new (easy-to-work-with) variable names ###
   new_variable_names <- list(
-    "Run_Number",
-    "Dekkers_Power",
-    "Average_Node_Degree",
-  # "Social_Entrepeneurs", 
-  #  "Population_Size",
-     "Tipping_Strategy",
-     "Rewiring_Proportion",
-     "Clustering_Coefficient",
-     "Communities",
-  "ticks",
-     "N_Green",
-     "Global_CC",
-     "Mean_Path_Length"
+  "Mem",
+  "CPU_Time"
   )
 
 #change variable names
