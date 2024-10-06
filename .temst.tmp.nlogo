@@ -878,7 +878,7 @@ clustering-coefficient
 clustering-coefficient
 0
 12
-1.55
+9.85
 0.05
 1
 NIL

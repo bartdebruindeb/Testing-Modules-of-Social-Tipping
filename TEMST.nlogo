@@ -878,7 +878,7 @@ clustering-coefficient
 clustering-coefficient
 0
 12
-1.55
+9.85
 0.05
 1
 NIL
@@ -1620,7 +1620,7 @@ NetLogo 6.4.0
       <value value="0.9"/>
     </enumeratedValueSet>
   </experiment>
-  <experiment name="experiment9DR" repetitions="100" runMetricsEveryStep="false">
+  <experiment name="experiment9DR" repetitions="75" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <exitCondition>report-sim-ended</exitCondition>
@@ -1640,7 +1640,6 @@ NetLogo 6.4.0
     </enumeratedValueSet>
     <enumeratedValueSet variable="dekkers-power">
       <value value="1"/>
-      <value value="2"/>
       <value value="3"/>
       <value value="5"/>
       <value value="7"/>
@@ -1664,6 +1663,10 @@ NetLogo 6.4.0
       <value value="0.25"/>
       <value value="0.35"/>
       <value value="0.45"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="1"/>
+      <value value="10"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="N">
       <value value="100"/>
