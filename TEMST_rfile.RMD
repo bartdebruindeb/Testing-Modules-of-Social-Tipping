@@ -64,7 +64,7 @@ source("functions_behaviorspace_table_output_handling.R")
 #NOTE: if csv files are placed in the workdirec, then leave filesPath unchanged
 filesPath <- ""
 ### MANUAL INPUT: specify filenames ###
-filesNames <- c("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/TEMST Clean Experiment 2-table.csv")
+filesNames <- c("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/experiment9DR-1455647.csv")
 
 
 ```
@@ -88,18 +88,27 @@ printColumnNames(df)
   new_variable_names <- list(
     "Run_Number",
     "Dekkers_Power",
-    "Average_Node_Degree",
-  # "Social_Entrepeneurs", 
-  #  "Population_Size",
+  #  "Node_Degree",
      "Tipping_Strategy",
+  #    "Communities",
      "Rewiring_Proportion",
-     "Clustering_Coefficient",
-     "Communities",
-  "ticks",
-     "N_Green",
-     "Global_CC",
-     "Mean_Path_Length"
-  )
+    "duration_to_decision",
+   #  "Population_Size",
+  #    "Clustering_Coefficient",
+      "Innovators",
+      "ticks",
+    "Mean_CC",
+    "Mean_EC",
+    "Mean_BC",
+    "Mean_PR",
+    "Mean_Path_Length",
+     "Var_CC",
+    "Var_EC",
+    "Var_BC",
+    "Var_PR",
+       "Majority_Green",
+       "Sim_Time"
+    )
 
 #change variable names
 variable_names <- names(df)
@@ -110,26 +119,64 @@ if (length(variable_names) == length(new_variable_names)) {
   print (length(new_variable_names))
   print("ERROR: the number of variable names you specified is not the same as the number of variables present within the dataframe; please check again")
 }
+
+
+clean_df <- clean_df[!(clean_df$Mean_Path_Length %in% "false"),]
 ```
 
+
+
+
+```{r include=FALSE}
+
+clean_df <- clean_df[order(clean_df$Run_Number),]
+t_reps <-200
+reps <- t_reps
+for (j in 10:t_reps){
+  reps <- j
+  index1 <- 1
+  index2 <- reps
+  for (i in 1:(max(clean_df$Run_Number)/t_reps)){
+    df_temp <- filter(clean_df, between(Run_Number, index1,index2))
+    rep_mean <- as.data.frame.list(colMeans(df_temp[c(8:18)]))
+    index1 <- index1 + t_reps
+    index2 <- index2 + t_reps
+    
+    #rep_mean <- cbind(df_temp[1,1:3],rep_mean)
+    if (exists('df_mean') && is.data.frame(get('df_mean'))) {
+      df_mean <- rbind(df_mean, cbind(df_temp[1,1:7],reps,rep_mean))
+    } else {
+      df_mean <- cbind(df_temp[1,1:7],reps,rep_mean)
+    }
+  }
+  }
+  
+  
+
+
+  
+```
 
 Transform variables with right label
 ```{r include=FALSE}
 #transform 'measurement' variable to numeric (as to avoid ggplot errors)
-clean_df$NCSAG <- as.numeric(clean_df$NCSAG)
-clean_df$NCSAB <- as.numeric(clean_df$NCSAB)
+#clean_df$NCSAG <- as.numeric(clean_df$NCSAG)
+#clean_df$NCSAB <- as.numeric(clean_df$NCSAB)
 clean_df$Sim_Time <- as.numeric(clean_df$Sim_Time)
 
 
-clean_df$Average_Node_Degree <- as.factor(clean_df$Average_Node_Degree)
+#clean_df$Node_Degree <- as.factor(clean_df$Node_Degree)
 #clean_df$Mean_Cluster_Coefficient <- as.factor(clean_df$Mean_Cluster_Coefficient)
-clean_df$Majority_Green <- as.factor(clean_df$Majority_Green)
+clean_df$Majority_Green <- as.numeric(clean_df$Majority_Green)
 clean_df$Dekkers_Power <- as.factor(clean_df$Dekkers_Power)
+clean_df$duration_to_decision <- as.factor(clean_df$duration_to_decision)
 clean_df$Rewiring_Proportion<- as.factor(clean_df$Rewiring_Proportion)
 #clean_df$Stop_Time <- as.factor(clean_df$Stop_Time)
 #clean_df$Population_Size <- as.factor(clean_df$Population_Size)
-#clean_df$Social_Entrepeneurs <- as.factor(clean_df$Social_Entrepeneurs)
+clean_df$Innovators <- as.factor(clean_df$Innovators)
 clean_df$Tipping_Strategy<- as.factor(clean_df$Tipping_Strategy)
+#clean_df$Communities<- as.factor(clean_df$Communities)
+#clean_df$Clustering_Coefficient<- as.factor(clean_df$Clustering_Coefficient)
 
 
 
@@ -140,7 +187,7 @@ Make Long Dataframe
 ```{r echo=FALSE, fig.height=7.5, fig.width=7.5, message=FALSE, warning=FALSE, results='asis'}
     
 #df_long <- dplyr::select(clean_df)
-df_long <- gather(clean_df, variable, measurement, Ticks:Majority_Green)
+df_long <- gather(df_mean, variable, measurement, ticks:Tick_ended)
 
 # SPECIFY VARIABLE MEASUREMENT SCALES -----------------------------------------------------
 ### MANUAL INPUT: in order for ggplot and plotly to work, one must specify the following: ###
@@ -226,7 +273,7 @@ Isolated Nodes
 ```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
 
 # "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-clean_df %>% filter()  %>%
+clean_df %>% filter((variable=))  %>%
    dplyr::sample_frac(1) %>%
 ggplot(aes(x = Sim_Time, y = NCSAG, color=Majority_Green)) +
     geom_point(size=4)+
@@ -274,42 +321,43 @@ ggplot(aes(x = Sim_Time, y = NCSAG, shape=Majority_Green, color=Tipping_Strategy
 ```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
 
 # "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-clean_df %>% filter()  %>%
+df_mean %>% filter(duration_to_decision ==  1) %>%
    dplyr::sample_frac(1) %>%
-ggplot(aes(x = Sim_Time, y = NCSAG, shape=Majority_Green, color=Tipping_Strategy)) +
-    geom_point(size=4)+
+ggplot(aes(x = reps, y = Majority_Green, color=Tipping_Strategy)) +
+    geom_point(size=2)+
     xlab("Sim_Time") +
     ylab("NSCAG") + 
    labs(title = "Normalised Cumulative Surface Area Green at Sim End",
        subtitle = "Pop_Per_Com == 50, N_Coms == 10, Social_Entrepeneurs == 0.1, Rep Runs == 25")+
     scale_color_viridis_d()+
     theme_bw()+
-  xlim(0, 11000)+
     theme(strip.background = element_rect(fill="black"),
           strip.text = element_text(size=12, colour="white", face = "bold"), 
           plot.title = element_text( size = 18), 
           plot.subtitle = element_text( size = 15),
           axis.title = element_text( size = 18) ) +
-   facet_grid( Rewiring_Proportion ~ Dekkers_Power, labeller = label_both ) 
+   facet_grid( Innovators ~ Dekkers_Power, labeller = label_both ) 
 
 
 
 ```
 
-Plotting Resin Network
+
 
 ```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
 
 # "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
 clean_df %>% #filter(Average_Node_Degree == 6)  %>%
    dplyr::sample_frac(1) %>%
-ggplot(aes(x = Mean_Node_Degree, y = Mean_Cluster_Coefficient)) +
-    geom_point(size=2)+
-    xlab("Mean_Node_Degree") +
-    ylab("Mean_Cluster_Coefficient") + 
-   # labs(title = "Evolution of Isolated Nodes  (Leiden_algorithm , rp == 0.4)",
-  #     subtitle = "Altering Factor: ITEMS, Levels == 6, reps == 5, DoC == WW, Pop == 250 ")+
-    scale_color_viridis_d()+
+ggplot() +
+    #geom_point(aes(color=Majority_Green)) +
+#  geom_point(data = df_mean,aes(x = Innovators, y=Majority_Green, shape=Tipping_Strategy, color=Tipping_Strategy)) +
+    geom_boxplot(data = clean_df, aes(x = Innovators, y=Sim_Time, shape=duration_to_decision, fill=Tipping_Strategy)) +
+    xlab("Social Innovators") +
+    ylab("Sim_Time") + 
+    labs(title = "Sim time distribution across 75 repetitive runs with varying decision_time 1 (left three) 10 (right three)")+
+   scale_color_viridis_d()+
+  scale_y_log10()+ #sec.axis = sec_axis(~.*1/log(.), name="Second Axis"))+
     theme_bw()+
  # xlim(0, 11000)+
     theme(strip.background = element_rect(fill="black"),
@@ -317,7 +365,32 @@ ggplot(aes(x = Mean_Node_Degree, y = Mean_Cluster_Coefficient)) +
           plot.title = element_text( size = 18), 
           plot.subtitle = element_text( size = 15),
           axis.title = element_text( size = 18) ) +
-   facet_grid( Tipping_Strategy ~ Network_Design , labeller = label_both ) 
+   facet_grid(Rewiring_Proportion~Dekkers_Power, labeller = label_both ) 
+
+
+
+```
+
+```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_mean %>% #filter(Average_Node_Degree == 6)  %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = Innovators, y=Majority_Green, shape=duration_to_decision, fill=Tipping_Strategy, color=Tipping_Strategy)) +
+    geom_point(size=3) +
+    xlab("Social Innovators") +
+    ylab("Majority Green") + 
+    labs(title = "Mean Majority Green across 75 repetitive runs")+
+ scale_shape_binned()+
+   scale_color_manual(values=c('red', 'darkgreen','blue','yellow'))+
+    theme_bw()+
+ # xlim(0, 11000)+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid(Rewiring_Proportion~Dekkers_Power, labeller = label_both ) 
 
 
 

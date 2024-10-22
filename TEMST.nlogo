@@ -16,6 +16,7 @@ globals [
   tick-ended
   gcc
   mal
+  count-people-updated-this-tick
 
 ]
 breed[people person]
@@ -27,6 +28,7 @@ people-own [
   my-community
   social-entrepeneur?
   number-of-connections
+  my-threshold
 
 ]
 
@@ -37,7 +39,7 @@ to setup
   ask patches [set pcolor white]
   setup-people
   setup-network
- ; layout-network
+  if layout-network? [repeat 10 [layout-network]]
   rewire
   setup-social-entrepeneurs
   setup-metrics
@@ -54,8 +56,9 @@ to setup-people
 
     create-people people-per-community [
       set my-community index
-          set size 3
-          set color blue
+      set my-threshold threshold-pop
+      set size 3
+      set color blue
       set ticks-to-new-decision random duration-to-decision
         ]
     set index index + 1
@@ -225,7 +228,13 @@ to setup-social-entrepeneurs ;;; Assigns which agents are the social entrepreneu
 
 
   let n-social-entrepreneurs ceiling (social-entrepeneurs * population-size)
-  if tipping-strategy = "Shotgun" [
+
+
+  if tipping-strategy = "Shotgun-NS" [
+    ask n-of n-social-entrepreneurs  people with [count my-connections != max [count my-connections] of people] [
+      setup-as-social-entrepeneur]]
+
+   if tipping-strategy = "Shotgun" [
     ask n-of n-social-entrepreneurs  people [
       setup-as-social-entrepeneur]]
 
@@ -340,6 +349,15 @@ to consider-adopting-new-behavior
         set ticks-to-new-decision ticks-to-new-decision - 1
       ]
     ]
+   if module = "threshold-model" [
+      if my-behavior = 0 [
+        if my-threshold < (count connection-neighbors with [my-behavior-t-1 = 1] + k1) / (count connection-neighbors + k2) [
+          set my-behavior 1
+          set color green
+          set count-people-updated-this-tick count-people-updated-this-tick +  1
+        ]
+      ]
+    ]
   ]
     ask people [
       set my-behavior-t-1 my-behavior
@@ -348,7 +366,9 @@ end
 
 
 to update-metrics
+
   set cum-surface-area-green cum-surface-area-green + calc-surface-area-green
+
   set norm-csag cum-surface-area-green / (ticks + 1)
   set norm-csab 1 - norm-csag
   let total-people count people
@@ -369,10 +389,11 @@ to update-metrics
     set Max-Green gp
   ]
 
-  if b = 0 or g = 0 and sim-ended? = false [
+  if b = 0 or g = 0 and sim-ended? = false or count-people-updated-this-tick = 0 and module = "threshold-model" [
     set sim-ended? true
     set tick-ended ticks
   ]
+  set count-people-updated-this-tick 0
 end
 
 to-report report-sim-ended
@@ -486,8 +507,8 @@ CHOOSER
 514
 tipping-strategy
 tipping-strategy
-"Snowball" "Shotgun" "Silver-Bullets" "Outskirts" "Bridges"
-1
+"Snowball" "Shotgun" "Shotgun-NS" "Silver-Bullets" "Outskirts" "Bridges"
+3
 
 SLIDER
 336
@@ -498,17 +519,17 @@ social-entrepeneurs
 social-entrepeneurs
 0
 1
-0.1
+0.06
 0.01
 1
 NIL
 HORIZONTAL
 
 PLOT
-722
-10
-907
-130
+761
+18
+946
+138
 Connection distribution
 NIL
 NIL
@@ -572,7 +593,7 @@ rewiring-proportion
 rewiring-proportion
 0
 1
-0.05
+0.17
 0.01
 1
 NIL
@@ -607,8 +628,8 @@ CHOOSER
 353
 module
 module
-"stochastic"
-0
+"stochastic" "threshold-model"
+1
 
 SLIDER
 1
@@ -666,7 +687,7 @@ dekkers-power
 dekkers-power
 0
 10
-4.5
+3.0
 0.5
 1
 NIL
@@ -791,10 +812,10 @@ SLIDER
 577
 Population-Size
 Population-Size
-420
-98
-420.0
-420
+1
+840
+840.0
+1
 1
 NIL
 HORIZONTAL
@@ -811,12 +832,12 @@ count people
 11
 
 BUTTON
-600
-44
-710
-77
+575
+33
+755
+66
 NIL
-layout-network
+repeat 10 [layout-network]
 NIL
 1
 T
@@ -878,7 +899,7 @@ clustering-coefficient
 clustering-coefficient
 0
 12
-9.85
+1.75
 0.05
 1
 NIL
@@ -1020,6 +1041,32 @@ duration-to-decision
 1
 NIL
 HORIZONTAL
+
+SLIDER
+674
+274
+846
+307
+threshold-pop
+threshold-pop
+0
+1
+0.45
+0.01
+1
+NIL
+HORIZONTAL
+
+SWITCH
+576
+124
+704
+157
+layout-network?
+layout-network?
+1
+1
+-1000
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -1620,7 +1667,7 @@ NetLogo 6.4.0
       <value value="0.9"/>
     </enumeratedValueSet>
   </experiment>
-  <experiment name="experiment9DR" repetitions="75" runMetricsEveryStep="false">
+  <experiment name="experiment9DR" repetitions="200" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <exitCondition>report-sim-ended</exitCondition>
@@ -1651,22 +1698,21 @@ NetLogo 6.4.0
       <value value="&quot;stochastic&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="tipping-strategy">
+      <value value="&quot;Shotgun-NS&quot;"/>
       <value value="&quot;Shotgun&quot;"/>
       <value value="&quot;Snowball&quot;"/>
       <value value="&quot;Silver-Bullets&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="n-communities">
-      <value value="5"/>
+      <value value="6"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="rewiring-proportion">
-      <value value="0.15"/>
+      <value value="0.05"/>
       <value value="0.25"/>
-      <value value="0.35"/>
       <value value="0.45"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="duration-to-decision">
-      <value value="1"/>
-      <value value="10"/>
+      <value value="0"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="N">
       <value value="100"/>
@@ -1920,7 +1966,7 @@ NetLogo 6.4.0
       <value value="0.4"/>
     </enumeratedValueSet>
   </experiment>
-  <experiment name="experiment8DRCC" repetitions="75" runMetricsEveryStep="false">
+  <experiment name="experiment8DRCC" repetitions="200" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <exitCondition>report-sim-ended</exitCondition>
