@@ -1,7 +1,7 @@
 ---
 output:
-  pdf_document: default
   html_document: default
+  pdf_document: default
   word_document: default
 ---
 
@@ -64,7 +64,7 @@ source("functions_behaviorspace_table_output_handling.R")
 #NOTE: if csv files are placed in the workdirec, then leave filesPath unchanged
 filesPath <- ""
 ### MANUAL INPUT: specify filenames ###
-filesNames <- c("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/experiment9DR-1574467.csv")
+filesNames <- c("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/temst experimentTH_DR_420-table.csv")
 
 
 ```
@@ -92,10 +92,11 @@ printColumnNames(df)
      "Tipping_Strategy",
   #    "Communities",
      "Rewiring_Proportion",
-   # "duration_to_decision",
+  #  "duration_to_decision",
    #  "Population_Size",
   #    "Clustering_Coefficient",
       "Innovators",
+  "Threshold_Pop",
       "ticks",
     "Mean_CC",
     "Mean_EC",
@@ -107,7 +108,9 @@ printColumnNames(df)
     "Var_BC",
     "Var_PR",
        "Majority_Green",
+   "Green_Percentage",
        "Sim_Time"
+ 
     )
 
 #change variable names
@@ -121,40 +124,13 @@ if (length(variable_names) == length(new_variable_names)) {
 }
 
 
-clean_df <- clean_df[!(clean_df$Mean_Path_Length %in% "false"),]
+#clean_df <- clean_df[!(clean_df$Mean_Path_Length %in% "false"),]
 ```
 
 
 
 
-```{r include=FALSE}
 
-clean_df <- clean_df[order(clean_df$Run_Number),]
-t_reps <- 200
-reps <- t_reps
-for (reps in 10:t_reps){
-  index1 <- 1
-  index2 <- reps
-  for (i in 1:(max(clean_df$Run_Number)/t_reps)){
-    df_temp <- filter(clean_df, between(Run_Number, index1,index2))
-    rep_mean <- as.data.frame.list(colMeans(df_temp[c(8:17)]))
-    index1 <- index1 + t_reps
-    index2 <- index2 + t_reps
-    
-    #rep_mean <- cbind(df_temp[1,1:3],rep_mean)
-    if (exists('df_mean') && is.data.frame(get('df_mean'))) {
-      df_mean <- rbind(df_mean, cbind(df_temp[1,1:7],reps,rep_mean))
-    } else {
-      df_mean <- cbind(df_temp[1,1:7],reps,rep_mean)
-    }
-  }
-  }
-  
-  
-
-
-  
-```
 
 ##Transform variables with right label
 ```{r include=FALSE}
@@ -162,7 +138,8 @@ for (reps in 10:t_reps){
 #clean_df$NCSAG <- as.numeric(clean_df$NCSAG)
 #clean_df$NCSAB <- as.numeric(clean_df$NCSAB)
 clean_df$Sim_Time <- as.numeric(clean_df$Sim_Time)
-
+clean_df$Green_Percentage <- as.numeric(clean_df$Green_Percentage)
+clean_df$Threshold_Pop <- as.factor(clean_df$Threshold_Pop)
 
 #clean_df$Node_Degree <- as.factor(clean_df$Node_Degree)
 #clean_df$Mean_Cluster_Coefficient <- as.factor(clean_df$Mean_Cluster_Coefficient)
@@ -185,16 +162,16 @@ clean_df$Tipping_Strategy<- as.factor(clean_df$Tipping_Strategy)
 ##Make Graphs
 --------------------------------- Mean Path Length
 ```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
-
+#df_mean$Threshold_Pop <- as.factor(df_mean$Threshold_Pop)
 # "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-df_mean %>% filter(reps == 200) %>%
+clean_df %>% filter() %>%
    dplyr::sample_frac(1) %>%
-ggplot(aes(x = Mean_Path_Length, y = Majority_Green, color=Tipping_Strategy)) +
+ggplot(aes(x = Mean_Path_Length, y = Green_Percentage, color=Tipping_Strategy)) +
     geom_point(size=2)+
     xlab("Mean_Path_Length") +
-    ylab("Majority Green") + 
+    ylab("Green Percentage") + 
    labs(title = "Percentage Majroity Green for Mean_Path_Length",
-       subtitle = "Rewiring_Proportion == 0.05/0.25/0.45, Dekkers_Power == 1/3/5/7, Pop_size == 820, Decision_Module == Stochastic, Rep_Runs == 200")+
+       subtitle = "Rewiring_Proportion == 0.05/0.25//0.45, Dekkers_Power == 1/3/5/7, Pop_size == 420, Decision_Module == Threshold, Rep_Runs == 50")+
     scale_color_viridis_d()+
     theme_bw()+
     theme(strip.background = element_rect(fill="black"),
@@ -202,7 +179,7 @@ ggplot(aes(x = Mean_Path_Length, y = Majority_Green, color=Tipping_Strategy)) +
           plot.title = element_text( size = 18), 
           plot.subtitle = element_text( size = 15),
           axis.title = element_text( size = 18) ) +
-   facet_grid( Tipping_Strategy ~ Innovators, labeller = label_both ) 
+   facet_grid( Threshold_Pop ~ Innovators, labeller = label_both ) 
 
 
 
@@ -210,23 +187,22 @@ ggplot(aes(x = Mean_Path_Length, y = Majority_Green, color=Tipping_Strategy)) +
 ```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
 
 # "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-clean_df %>% filter(reps == 200) %>%
+clean_df %>% filter() %>%
    dplyr::sample_frac(1) %>%
 ggplot(aes(x = Mean_Path_Length, y = Sim_Time, color=Tipping_Strategy)) +
-    geom_point(size=1)+
+    geom_point(size=2)+
     xlab("Mean_Path_Length") +
     ylab("Sim_Time") + 
    labs(title = "Percentage Sim_Time for Mean_Path_Length",
-       subtitle = "Rewiring_Proportion == 0.05/0.25/0.45, Dekkers_Power == 1/3/5/7, Pop_size == 820, Decision_Module == Stochastic, Rep_Runs == 200")+
+       subtitle = "Rewiring_Proportion == 0.05/0.25//0.45, Dekkers_Power == 1/3/5/7, Pop_size == 420, Decision_Module == Threshold, Rep_Runs == 50")+
     scale_color_viridis_d()+
     theme_bw()+
-    scale_y_log10()+
     theme(strip.background = element_rect(fill="black"),
           strip.text = element_text(size=12, colour="white", face = "bold"), 
           plot.title = element_text( size = 18), 
           plot.subtitle = element_text( size = 15),
           axis.title = element_text( size = 18) ) +
-   facet_grid( Tipping_Strategy ~ Innovators, labeller = label_both ) 
+   facet_grid( Threshold_Pop ~ Innovators, labeller = label_both ) 
 
 
 
@@ -237,39 +213,15 @@ ggplot(aes(x = Mean_Path_Length, y = Sim_Time, color=Tipping_Strategy)) +
 ```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
 
 # "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-df_mean %>% filter(reps == 200) %>%
+clean_df %>% filter() %>%
    dplyr::sample_frac(1) %>%
-ggplot(aes(x = Mean_CC, y = Majority_Green, color=Tipping_Strategy)) +
+ggplot(aes(x = Mean_CC, y = Green_Percentage, color=Tipping_Strategy)) +
     geom_point(size=2)+
     xlab("Mean-Clustering-Coefficient") +
-    ylab("Majority Green") + 
+    ylab("Green_Percentage") + 
    labs(title = "Percentage Majroity Green for Mean_Clustering_Coefficient",
-       subtitle = "Rewiring_Proportion == 0.05/0.25/0.45, Dekkers_Power == 1/3/5/7, Pop_size == 820, Decision_Module == Stochastic, Rep_Runs == 200")+
+       subtitle = "Rewiring_Proportion == 0.05/0.25//0.45, Dekkers_Power == 1/3/5/7, Pop_size == 420, Decision_Module == Threshold, Rep_Runs == 50")+
     scale_color_viridis_d()+
-    theme_bw()+
-  theme(strip.background = element_rect(fill="black"),
-          strip.text = element_text(size=12, colour="white", face = "bold"), 
-          plot.title = element_text( size = 18), 
-          plot.subtitle = element_text( size = 15),
-          axis.title = element_text( size = 18) ) +
-   facet_grid(~ Innovators, labeller = label_both ) 
-
-
-
-```
-```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
-
-# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-clean_df %>% filter(reps == 200) %>%
-   dplyr::sample_frac(1) %>%
-ggplot(aes(x = Mean_CC, y = Sim_Time, color=Tipping_Strategy)) +
-    geom_point(size=1)+
-    xlab("Mean-Clustering-Coefficient") +
-    ylab("Simulation_Time ") + 
-   labs(title = "Percentage Simulation_Time for Mean_Clustering_Coefficient",
-       subtitle = "Rewiring_Proportion == 0.05/0.25/0.45, Dekkers_Power == 1/3/5/7, Pop_size == 820, Decision_Module == Stochastic, Rep_Runs == 200")+
-    scale_color_viridis_d()+
-    scale_y_log10()+
     theme_bw()+
     theme(strip.background = element_rect(fill="black"),
           strip.text = element_text(size=12, colour="white", face = "bold"), 
@@ -278,19 +230,20 @@ ggplot(aes(x = Mean_CC, y = Sim_Time, color=Tipping_Strategy)) +
           axis.title = element_text( size = 18) ) +
    facet_grid( Tipping_Strategy ~ Innovators, labeller = label_both ) 
 
-```
 
+
+```
 ```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
 
 # "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-df_mean %>% filter(Rewiring_Proportion == 0.05) %>%
+clean_df %>% filter() %>%
    dplyr::sample_frac(1) %>%
-ggplot(aes(x = reps, y = Sim_Time, color=Tipping_Strategy)) +
-    geom_point(size=1.5)+
-    xlab("Repititive Runs") +
-    ylab("Simulation Time") + 
-   labs(title = "Percentage Simulation Time for cumulative repetitive runs",
-       subtitle = "Rewiring_Proportion == 0.05, Pop_size == 820, Decision_Module == Stochastic")+
+ggplot(aes(x = Mean_CC, y = Sim_Time, color=Tipping_Strategy)) +
+    geom_point(size=2)+
+    xlab("Mean-Clustering-Coefficient") +
+    ylab("Simulation_Time ") + 
+   labs(title = "Percentage Simulation_Time for Mean_Clustering_Coefficient",
+       subtitle = "Rewiring_Proportion == 0.05/0.25//0.45, Dekkers_Power == 1/3/5/7, Pop_size == 420, Decision_Module == Threshold, Rep_Runs == 50")+
     scale_color_viridis_d()+
     theme_bw()+
     theme(strip.background = element_rect(fill="black"),
@@ -298,70 +251,25 @@ ggplot(aes(x = reps, y = Sim_Time, color=Tipping_Strategy)) +
           plot.title = element_text( size = 18), 
           plot.subtitle = element_text( size = 15),
           axis.title = element_text( size = 18) ) +
-   facet_grid( Innovators ~ Dekkers_Power, labeller = label_both ) 
-
-
+   facet_grid( Threshold_Pop ~ Innovators, labeller = label_both ) 
 
 ```
-```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
-
-# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-df_mean %>% filter(Rewiring_Proportion == 0.25) %>%
-   dplyr::sample_frac(1) %>%
-ggplot(aes(x = reps, y = Majority_Green, color=Tipping_Strategy)) +
-    geom_point(size=1.5)+
-    xlab("Repititive Runs") +
-    ylab("Majority Green") + 
-   labs(title = "Percentage Majroity Green for cumulative repetitive runs",
-       subtitle = "Rewiring_Proportion == 0.25, Pop_size == 820, Decision_Module == Stochastic")+
-    scale_color_viridis_d()+
-    theme_bw()+
-    theme(strip.background = element_rect(fill="black"),
-          strip.text = element_text(size=12, colour="white", face = "bold"), 
-          plot.title = element_text( size = 18), 
-          plot.subtitle = element_text( size = 15),
-          axis.title = element_text( size = 18) ) +
-   facet_grid( Innovators ~ Dekkers_Power, labeller = label_both ) 
 
 
-
-```
-```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
-
-# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-df_mean %>% filter(Rewiring_Proportion == 0.45) %>%
-   dplyr::sample_frac(1) %>%
-ggplot(aes(x = reps, y = Majority_Green, color=Tipping_Strategy)) +
-    geom_point(size=1.5)+
-    xlab("Repititive Runs") +
-    ylab("Majority Green") + 
-   labs(title = "Percentage Majroity Green for cumulative repetitive runs",
-       subtitle = "Rewiring_Proportion == 0.45, Pop_size == 820, Decision_Module == Stochastic")+
-    scale_color_viridis_d()+
-    theme_bw()+
-    theme(strip.background = element_rect(fill="black"),
-          strip.text = element_text(size=12, colour="white", face = "bold"), 
-          plot.title = element_text( size = 18), 
-          plot.subtitle = element_text( size = 15),
-          axis.title = element_text( size = 18) ) +
-   facet_grid( Innovators ~ Dekkers_Power, labeller = label_both ) 
-
-
-
-```
 
 Sensitivity to Dekkers_Power and Rewiring_Proportion
 ```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
 
 # "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-df_mean %>% filter( reps == 200)  %>%
+clean_df  %>%
    dplyr::sample_frac(1) %>%
-ggplot(aes(x = Innovators, y=Majority_Green, fill=Tipping_Strategy, color=Tipping_Strategy)) +
+ggplot(aes(x = Innovators, y=Majority_Green, shape=duration_to_decision, fill=Tipping_Strategy, color=Tipping_Strategy)) +
     geom_point(size=3) +
     xlab("Social Innovators") +
     ylab("Majority Green") + 
     labs(title = "Mean Majority Green across 75 repetitive runs")+
  scale_shape_binned()+
+   scale_color_manual(values=c('red', 'darkgreen','blue'))+
     theme_bw()+
  # xlim(0, 11000)+
     theme(strip.background = element_rect(fill="black"),
@@ -378,7 +286,7 @@ ggplot(aes(x = Innovators, y=Majority_Green, fill=Tipping_Strategy, color=Tippin
 ```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
 clean_df$Innovators <- as.factor(clean_df$Innovators)
 # "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-clean_df %>% filter()  %>%
+clean_df %>% filter(duration_to_decision ==  1)  %>%
    dplyr::sample_frac(1) %>%
 ggplot(aes(x = Innovators, y=Sim_Time, fill=Tipping_Strategy)) +
     #geom_point(aes(color=Majority_Green)) +
