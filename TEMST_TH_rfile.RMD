@@ -26,6 +26,8 @@ pacman::p_load(NetworkToolbox,
                leidenAlg,
                ggthemes,
                knitr ,
+               see,
+               scico,
                data.table,
                igraph,
                qgraph,
@@ -62,75 +64,163 @@ source("functions_behaviorspace_table_output_handling.R")
 
 ### MANUAL INPUT: Optionally specify filepath (i.e. where the behaviorspace csv is situated) ###
 #NOTE: if csv files are placed in the workdirec, then leave filesPath unchanged
-filesPath <- ""
+filesPath <- "C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/Threshold/"
 ### MANUAL INPUT: specify filenames ###
-filesNames <- c("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/temst experimentTH_DR_420-table.csv")
 
+filesPathPatterns <- list("experimentTH_030*","experimentTH_040*","experimentTH_050*","experimentTH_060*", "experimentTH_070*")
+
+
+filesNames <- list.files(path = filesPath, pattern = "*.csv")
+# READ DATA ---------------------------------------------------------------
+ 
+for (i in filesPathPatterns){
+if (exists('df2') && is.data.frame(get('df2'))) {
+  print(i)
+      temp_df <- loadData(filesPath, list.files(path = filesPath, pattern = i))
+      #temp_df$X.run.number. <- temp_df$X.run.number 
+      df2 <- rbind(df2, temp_df)
+    }  else {
+       df2 <- loadData(filesPath, filesNames)
+    }
+}
+#df2 <- loadData(filesPath, filesNames)
+df2 <- removeVariables(df2)
 
 ```
 
-
-##Read data and rename columns
-```{r include=FALSE}
-# READ DATA ---------------------------------------------------------------
-
-df <- loadData(filesPath, filesNames)
-
+``` {r include = FALSE}
 
 # REMOVE IRRELEVANT VARIABLES ---------------------------------------------------------------
 
-df <- removeVariables(df)
 
 # RENAME VARIABLES ---------------------------------------------------------------
-printColumnNames(df)
+printColumnNames(df2)
 
   ### MANUAL INPUT: specify new (easy-to-work-with) variable names ###
   new_variable_names <- list(
     "Run_Number",
     "Dekkers_Power",
-  #  "Node_Degree",
+   # "Node_Degree",
      "Tipping_Strategy",
-  #    "Communities",
+      "Communities",
      "Rewiring_Proportion",
-  #  "duration_to_decision",
+   # "duration_to_decision",
    #  "Population_Size",
-  #    "Clustering_Coefficient",
+      "Clustering_Exponent",
       "Innovators",
-  "Threshold_Pop",
+   "Threshold",
       "ticks",
-    "Mean_CC",
-    "Mean_EC",
-    "Mean_BC",
-    "Mean_PR",
-    "Mean_Path_Length",
-     "Var_CC",
-    "Var_EC",
-    "Var_BC",
-    "Var_PR",
-       "Majority_Green",
+   # "MSCe",
+  #  "MEC",
+  #  "MBC",
+  #  "MCCe",
+   "MSCl",
+    "GCC",
+    "MCPL",
+    "MPL",
+  #   "VCCe",
+  #  "VEC",
+  #  "VBC",
+    "VCCo",
+   "VD",
+#    "Majority_Green",
    "Green_Percentage",
-       "Sim_Time"
- 
+    "Sim_Time"
     )
 
-#change variable names
-variable_names <- names(df)
+#change variable names2
+variable_names <- names(df2)
 if (length(variable_names) == length(new_variable_names)) {
-  clean_df <- changeColumnNames(df, new_variable_names)
+  clean_df <- changeColumnNames(df2, new_variable_names)
 } else {
   print (length(variable_names))
   print (length(new_variable_names))
   print("ERROR: the number of variable names you specified is not the same as the number of variables present within the dataframe; please check again")
 }
 
+#clean_df <- subset(clean_df, Tipping_Strategy != "Shotgun-NS")
+
 
 #clean_df <- clean_df[!(clean_df$Mean_Path_Length %in% "false"),]
+
+#clean_df <- clean_df[order(clean_df$Run_Number),]
+
+
 ```
 
+```{r include=false}
+#df1 <- add_column(df1, dekkers.power = 5, .after = 1 )
+#df1 <- subset( df1, select = -dekkers.power.1 )
+#df3 <- dplyr::bind_rows(df1, df2)
+write.csv(clean_df,"C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/Threshold/TH_clean.csv" )
+write.csv(df_mean,"C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/Threshold/TH_mean_clean.csv" )
+#clean_df<- filter(clean_df, clean_df$Tipping_Strategy != "S_Closeness")
+#clean_df<- clean_df %>% mutate(across(c('Green_Percentage'), round,3))
+#df_mean <-  clean_df %>%
+# group_by(Dekkers_Power, Tipping_Strategy, Innovators, Communities, Rewiring_Proportion, Clustering_Exponent,Threshold) %>%
+#  summarise_if(is.numeric, mean, na.rm = TRUE)
+```
 
+``` {r include = FALSE}
 
+# REMOVE IRRELEVANT VARIABLES ---------------------------------------------------------------
 
+df <- read.csv("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/Threshold/TH_clean.csv", header = TRUE)
+df_mean <- read.csv("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/Threshold/TH_mean_clean.csv", header = TRUE)
 
+df <- df[-c(1)]
+df_mean <-  df_mean[-c(1)]
+
+#printColumnNames(df)
+  ### MANUAL INPUT: specify new (easy-to-work-with) variable names ###
+  new_variable_names <- list(
+   "Run_Number",
+    "Dekkers_Power",
+ #   "Node_Degree",
+     "Tipping_Strategy",
+      "Communities",
+     "Rewiring_Proportion",
+   # "duration_to_decision",
+   #  "Population_Size",
+      "Clustering_Exponent",
+      "Innovators",
+ "Threshold",
+      "ticks",
+   # "MSCe",
+  #  "MEC",
+  #  "MBC",
+  #  "MCCe",
+   "MSCl",
+    "GCC",
+    "MCPL",
+    "MPL",
+  #   "VCCe",
+  #  "VEC",
+  #  "VBC",
+    "VCCo",
+   "VD",
+#    "Majority_Green",
+   "Green_Percentage",
+    "Sim_Time"
+    )
+
+#change variable names
+#clean_df <- changeColumnNames(df, new_variable_names)
+#new_variable_names <- append(new_variable_names, "IO_Ratio_N")
+#df_mean <- changeColumnNames(df_mean, new_variable_names)
+
+clean_df <- df
+```
+
+```{r include=FALSE}
+df_mean$Innovators <- as.numeric(df_mean$Innovators)
+#df_mean$Innovators <- df_mean$Innovators / 10 
+df_mean$Green_Percentage <- as.numeric(df_mean$Green_Percentage)
+df_mean <- df_mean %>% mutate(IO_Ratio_N = Green_Percentage / Innovators)
+
+#df_mean <- df_mean %>% mutate(IO_Ratio_O = cut(df_mean$IO_Ratio_N, breaks=c(0, 0.5, 0.75, 1, 1.25,1.5, Inf)))
+  
+```
 
 ##Transform variables with right label
 ```{r include=FALSE}
@@ -138,21 +228,23 @@ if (length(variable_names) == length(new_variable_names)) {
 #clean_df$NCSAG <- as.numeric(clean_df$NCSAG)
 #clean_df$NCSAB <- as.numeric(clean_df$NCSAB)
 clean_df$Sim_Time <- as.numeric(clean_df$Sim_Time)
-clean_df$Green_Percentage <- as.numeric(clean_df$Green_Percentage)
-clean_df$Threshold_Pop <- as.factor(clean_df$Threshold_Pop)
 
+df_mean$Communities <- as.factor(df_mean$Communities)
+df_mean$Threshold <- as.factor(df_mean$Threshold)
 #clean_df$Node_Degree <- as.factor(clean_df$Node_Degree)
 #clean_df$Mean_Cluster_Coefficient <- as.factor(clean_df$Mean_Cluster_Coefficient)
-clean_df$Majority_Green <- as.numeric(clean_df$Majority_Green)
+#clean_df$Majority_Green <- as.numeric(clean_df$Majority_Green)
 clean_df$Dekkers_Power <- as.factor(clean_df$Dekkers_Power)
 #clean_df$duration_to_decision <- as.factor(clean_df$duration_to_decision)
 clean_df$Rewiring_Proportion<- as.factor(clean_df$Rewiring_Proportion)
 #clean_df$Stop_Time <- as.factor(clean_df$Stop_Time)
 #clean_df$Population_Size <- as.factor(clean_df$Population_Size)
+df_mean$Innovators <- as.factor(df_mean$Innovators)
 clean_df$Innovators <- as.factor(clean_df$Innovators)
 clean_df$Tipping_Strategy<- as.factor(clean_df$Tipping_Strategy)
 #clean_df$Communities<- as.factor(clean_df$Communities)
 #clean_df$Clustering_Coefficient<- as.factor(clean_df$Clustering_Coefficient)
+df_mean$IO_Ratio_N <- as.numeric(df_mean$IO_Ratio_N)
 
 
 
@@ -160,153 +252,601 @@ clean_df$Tipping_Strategy<- as.factor(clean_df$Tipping_Strategy)
 
 
 ##Make Graphs
---------------------------------- Mean Path Length
-```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
-#df_mean$Threshold_Pop <- as.factor(df_mean$Threshold_Pop)
+--------------------------------- Mean Simple Path Length
+```{r echo=FALSE,fig.height=15, fig.width=15, message=TRUE, warning=TRUE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
 # "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-clean_df %>% filter() %>%
-   dplyr::sample_frac(1) %>%
-ggplot(aes(x = Mean_Path_Length, y = Green_Percentage, color=Tipping_Strategy)) +
-    geom_point(size=2)+
-    xlab("Mean_Path_Length") +
-    ylab("Green Percentage") + 
-   labs(title = "Percentage Majroity Green for Mean_Path_Length",
-       subtitle = "Rewiring_Proportion == 0.05/0.25//0.45, Dekkers_Power == 1/3/5/7, Pop_size == 420, Decision_Module == Threshold, Rep_Runs == 50")+
-    scale_color_viridis_d()+
+#install.packages("see")
+#ibrary(see)
+clean_df$Rewiring_Proportion <- as.factor(clean_df$Rewiring_Proportion)
+df_long <- clean_df  %>% gather( variable, measurement, ticks:Sim_Time) %>% filter( Tipping_Strategy != "S_Closeness")
+output_parameters <- list("MPL", "MCPL", "MSCl", "VCCo", "VD")
+out_para_names <- list("Mean_Shortest_Path_Length", "Mean_Complex_Path_Length", "Mean_Cluster_Coefficient", "Variance_Cluster_Coefficient", "Variance_Node_Degree")
+
+compute_plot <- function(k, i) {
+df_use <- df_long %>% filter(variable == k) %>%
+   dplyr::sample_frac()
+g_plot <- ggplot(df_use, aes(x = measurement, y = Clustering_Exponent, color = Rewiring_Proportion )) +
+    #geom_histogram(binwidth=0.01)+
+      geom_point (size = 2) + 
+   #geom_smooth(span=0.8)+
+    xlab(i) +
+    ylab("Clustering_Exponent") + 
+   labs(title = "Node Degree == 10")+
+    scale_color_oi()+ 
+   # scale_x_log10()+
     theme_bw()+
     theme(strip.background = element_rect(fill="black"),
           strip.text = element_text(size=12, colour="white", face = "bold"), 
           plot.title = element_text( size = 18), 
           plot.subtitle = element_text( size = 15),
           axis.title = element_text( size = 18) ) +
-   facet_grid( Threshold_Pop ~ Innovators, labeller = label_both ) 
-
-
+   facet_grid(Communities~ Dekkers_Power, labeller = label_both )
+print(g_plot)
+}
+for (i in 1:length(output_parameters)){
+  compute_plot(output_parameters[[i]],out_para_names[i])
+}
 
 ```
-```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
 
+```{r echo=FALSE,fig.height=15, fig.width=15, message=TRUE, warning=TRUE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
 # "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-clean_df %>% filter() %>%
+
+clean_df$Rewiring_Proportion <- as.factor(clean_df$Rewiring_Proportion)
+#df_long <- clean_df  %>% gather( variable, measurement, ticks:Sim_Time) %>% filter( Tipping_Strategy != "S_Closeness")
+output_parameters <- list(0.3, 0.4, 0.5, 0.6, 0.7)
+out_para_names <- list("Threshold == 0.3", "Threshold == 0.4", "Threshold == 0.5", "Threshold == 0.6", "Threshold == 0.7")
+
+compute_plot_nw <- function(k,i) {
+df_use <- filter(clean_df,clean_df$Threshold == k, Innovators == 0.1,  Tipping_Strategy == "Shotgun")
+df_use_mean <- filter(df_mean,df_mean$Threshold == k, Innovators == 0.1,  Tipping_Strategy == "Shotgun") 
+g_plot <- ggplot() +
+    #geom_histogram(binwidth=0.01)+
+  #    geom_point(data=df_use, aes(x = IO_Ratio_N, y =MPL, color = Tipping_Strategy ), size = 1) + 
+   geom_point(data=df_use, aes(x = MPL, y = GCC, fill= VD),shape = 21, size = 2) +
+ 
+    xlab("Mean_Shortest_Path_Length")+
+    ylab("Global_Clustering_Coefficient") +
+   labs(title = i)+
+scale_fill_gradient(low = "yellow", high = "red", na.value = NA, name = "Var Node Degree")+
+ #scico::scale_color_scico(palette = "lajolla")+
+    scale_x_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+           # panel.background = element_rect(fill = "beige"),
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+#   facet_grid(~Innovators, labeller = label_both )
+ggnewscale::new_scale_color() +
+  geom_point(data=df_use_mean, aes(x = MPL, y = GCC, color = VD, fill = VD), stroke = 2, shape=21, size=4)+
+  scale_color_gradient(low = "black", high = "black", na.value = NA, guide="none")
+print(g_plot)
+
+}
+for (i in 1:length(output_parameters)){
+  compute_plot_nw(output_parameters[[i]],out_para_names[i])
+}
+
+```   
+
+
+```{r echo=FALSE,fig.height=15, fig.width=15, message=TRUE, warning=TRUE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+
+clean_df$Rewiring_Proportion <- as.factor(clean_df$Rewiring_Proportion)
+#df_long <- clean_df  %>% gather( variable, measurement, ticks:Sim_Time) %>% filter( Tipping_Strategy != "S_Closeness")
+output_parameters <- list(0.3, 0.4, 0.5, 0.6, 0.7)
+out_para_names <- list("Threshold == 0.3", "Threshold == 0.4", "Threshold == 0.5", "Threshold == 0.6", "Threshold == 0.7")
+output_p2 <- list("MPL", "MCPL", "MSCl", "GCC", "VCCo", "VD")
+out_p2_names <- list("Mean_Shortest_Path_Length", "Mean_Complex_Path_Length", "Mean_Cluster_Coefficient", "Global_Clustering_Coefficient", "Variance_Cluster_Coefficient", "Variance_Node_Degree")
+
+compute_plot_nw <- function(k,i,l,j) {
+df_use <- filter(clean_df,clean_df$Threshold == k)
+df_use_mean <- filter(df_mean, df_mean$Threshold == k)
+p <-as.name(l)
+g_plot <- ggplot() +
+    #geom_histogram(binwidth=0.01)+
+  #    geom_point(data=df_use, aes(x = IO_Ratio_N, y =MPL, color = Tipping_Strategy ), size = 1) + 
+   geom_point(data=df_use, aes(x = !!ensym(p), y = Green_Percentage, color = Tipping_Strategy), size =1) + 
+  geom_smooth(data=df_use_mean, aes(x = !!ensym(p), y = Green_Percentage, color = Tipping_Strategy), span=0.8)+
+    xlab(j) +
+    ylab("Ratio Adopted") +
+   labs(title = i)+
+ # scico::scale_color_scico(palette = "lajolla")+
+    scale_x_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+           # panel.background = element_rect(fill = "beige"),
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid(~Innovators, labeller = label_both )
+# ggnewscale::new_scale_color() +
+#  geom_point(data=df_use_mean, aes(x = MPL, y = MSCl, color = Majority_Green), size = 2) +
+ #  scale_color_brewer(,,palette = "Blues")
+ ggsave(g_plot, file=paste0("raw_",i,l,".png"), width = 10, height = 10, units = "in")
+#print(g_plot)
+
+}
+for (i in 1:length(output_parameters)){
+  for (k in 1:length(output_p2)) {
+  compute_plot_nw(output_parameters[[i]],out_para_names[i], output_p2[[k]], out_p2_names[k])
+  }
+}
+
+```
+
+##Make Graphs
+--------------------------------- Mean Simple Path Length
+````{r echo=FALSE,fig.height=15, fig.width=15, message=TRUE, warning=TRUE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+
+clean_df$Rewiring_Proportion <- as.factor(clean_df$Rewiring_Proportion)
+#df_long <- clean_df  %>% gather( variable, measurement, ticks:Sim_Time) %>% filter( Tipping_Strategy != "S_Closeness")
+output_parameters <- list(0.3, 0.4, 0.5, 0.6)
+out_para_names <- list("Threshold == 0.3", "Threshold == 0.4", "Threshold == 0.5", "Threshold == 0.6")
+
+compute_plot_nw <- function(k,i) {
+df_use <- filter(clean_df,Threshold == k)
+df_use_mean <- filter(df_mean,Threshold == k) 
+g_plot <- ggplot() +
+    #geom_histogram(binwidth=0.01)+
+  #    geom_point(data=df_use, aes(x = IO_Ratio_N, y =MPL, color = Tipping_Strategy ), size = 1) + 
+   geom_point(data=df_use_mean, aes(x = MPL, y = Green_Percentage, color = Tipping_Strategy), size =3) + 
+  geom_smooth(data=df_use_mean, aes(x = MPL, y = Green_Percentage, color = Tipping_Strategy), span=0.8)+
+    xlab("Mean_Shortest_Path_Length") +
+    ylab("Ratio Full Adoption/Seeds") +
+   labs(title = i)+
+ # scico::scale_color_scico(palette = "lajolla")+
+    scale_x_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+           # panel.background = element_rect(fill = "beige"),
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid(~Innovators, labeller = label_both )
+# ggnewscale::new_scale_color() +
+#  geom_point(data=df_use_mean, aes(x = MPL, y = MSCl, color = Majority_Green), size = 2) +
+ #  scale_color_brewer(,,palette = "Blues")
+print(g_plot)
+
+}
+for (i in 1:length(output_parameters)){
+  compute_plot_nw(output_parameters[[i]],out_para_names[i])
+}
+
+```
+````{r echo=FALSE,fig.height=15, fig.width=15, message=TRUE, warning=TRUE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_mean$Threshold <- as.factor(df_mean$Threshold)
+clean_df$Rewiring_Proportion <- as.factor(clean_df$Rewiring_Proportion)
+#df_long <- clean_df  %>% gather( variable, measurement, ticks:Sim_Time) %>% filter( Tipping_Strategy != "S_Closeness")
+output_parameters <- list("MPL", "MCPL","GCC", "MSCl", "VCCo", "VD")
+out_para_names <- list("Mean_Shortest_Path_Length", "Mean_Complex_Path_Length", "Global_Clustering_Coefficient", "Mean_Local_Cluster_Coefficient", "Variance_Cluster_Coefficient", "Variance_Node_Degree")
+
+compute_plot_nw <- function(k,i) {
+#df_use <- filter(clean_df,Threshold == k)
+#df_use_mean <- filter(df_mean,Threshold == k) 
+  x.var <- rlang::sym(k)
+  print(x.var)
+g_plot <- ggplot() +
+    #geom_histogram(binwidth=0.01)+
+  #    geom_point(data=df_use, aes(x = IO_Ratio_N, y =MPL, color = Tipping_Strategy ), size = 1) + 
+   geom_point(data=clean_df, aes(x = !! x.var, y = Green_Percentage, color = Threshold), size =1.5) + 
+  geom_smooth(data=clean_df, aes(x = !! x.var, y = Green_Percentage, color = Threshold), span=0.8)+
+    xlab(i) +
+    ylab("Ratio Full Adoption/Seeds") +
+   labs(title = "Node_Degree = 7")+
+ # scico::scale_color_scico(palette = "lajolla")+
+    scale_x_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+           # panel.background = element_rect(fill = "beige"),
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid(Innovators~Tipping_Strategy, labeller = label_both )
+# ggnewscale::new_scale_color() +
+#  geom_point(data=df_use_mean, aes(x = MPL, y = MSCl, color = Majority_Green), size = 2) +
+ #  scale_color_brewer(,,palette = "Blues")
+print(g_plot)
+
+}
+for (i in 1:length(output_parameters)){
+  compute_plot_nw(output_parameters[[i]],out_para_names[i])
+}
+
+```
+
+
+
+##Make Graphs
+--------------------------------- Mean Simple Path Length
+```{r echo=FALSE,fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_mean %>% filter(Tipping_Strategy != "S_Closeness") %>%
+  dplyr::sample_frac(1) %>%
+ggplot(aes(x = MPL, y = Majority_Green, shape == Tipping_Strategy, color = Tipping_Strategy)) +
+    #geom_histogram(binwidth=0.01)+
+      geom_point (size = 2) + 
+   geom_smooth(span=0.8)+
+    xlab("Mean_Simple_Path_Length") +
+    ylab("Majority_Green") + 
+   #labs(title = "MPL")+
+    scale_color_viridis_d(trans = "log")+
+ # scale_x_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid( Node_Degree ~ Innovators, labeller = label_both ) 
+
+```
+
+
+
+
+
+
+--------------------------------- Mean Complex Path Length
+```{r echo=FALSE,fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_mean %>% filter(Tipping_Strategy != "S_Closeness") %>%
    dplyr::sample_frac(1) %>%
-ggplot(aes(x = Mean_Path_Length, y = Sim_Time, color=Tipping_Strategy)) +
-    geom_point(size=2)+
-    xlab("Mean_Path_Length") +
+ggplot(aes(x = MCPL, y = Majority_Green, shape == Tipping_Strategy, color = Tipping_Strategy)) +
+    #geom_histogram(binwidth=0.01)+
+      geom_point (size = 2) + 
+   geom_smooth(span=0.8)+
+    xlab("Mean_Complex_Path_Length") +
+    ylab("Majority_Green") + 
+   #labs(title = "MPL")+
+    scale_color_viridis_d()+
+ # scale_x_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid( Node_Degree ~ Innovators, labeller = label_both ) 
+
+```
+
+
+--------------------------------- Variance Node Degree
+```{r echo=FALSE,fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_mean %>% filter() %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = VD, y = Majority_Green, shape == Tipping_Strategy, color = Tipping_Strategy)) +
+    #geom_histogram(binwidth=0.01)+
+      geom_point (size = 2) + 
+   geom_smooth(span=0.8)+
+    xlab("Variance_Node_Degree") +
+    ylab("Majority_Green") + 
+   #labs(title = "MPL")+
+    scale_color_viridis_d()+
+  scale_x_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid( ~ Innovators, labeller = label_both ) 
+
+```
+
+
+--------------------------------- Mean Local Clustering Coefficient
+```{r echo=FALSE,fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_mean %>% filter() %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = MSCl, y = Majority_Green, shape == Tipping_Strategy, color = Tipping_Strategy)) +
+    #geom_histogram(binwidth=0.01)+
+      geom_point (size = 2) + 
+   geom_smooth(span=0.8)+
+    xlab("Mean_Local Clustering Coefficient") +
+    ylab("Majority_Green") + 
+   #labs(title = "MPL")+
+    scale_color_viridis_d()+
+ # scale_x_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid( ~ Innovators, labeller = label_both ) 
+
+```
+
+
+--------------------------------- Mean Global Clustering Coefficient
+```{r echo=FALSE,fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_mean %>% filter() %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = GCC, y = Majority_Green, shape == Tipping_Strategy, color = Tipping_Strategy)) +
+    #geom_histogram(binwidth=0.01)+
+      geom_point (size = 2) + 
+   geom_smooth(span=0.8)+
+    xlab("Global_Clustering_Coefficient") +
+    ylab("Majority_Green") + 
+   #labs(title = "MPL")+
+    scale_color_viridis_d()+
+  #scale_x_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid( ~ Innovators, labeller = label_both ) 
+
+```
+
+
+
+
+--------------------------------- Variance Local Clustering Coefficient
+```{r echo=FALSE,fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_mean %>% filter() %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = VCCo, y = Majority_Green, shape == Tipping_Strategy, color = Tipping_Strategy)) +
+    #geom_histogram(binwidth=0.01)+
+      geom_point (size = 2) + 
+   geom_smooth(span=0.8)+
+    xlab("Variance Local Clustering Coefficient") +
+    ylab("Majority_Green") + 
+   #labs(title = "MPL")+
+    scale_color_viridis_d()+
+  #scale_x_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid( ~ Innovators, labeller = label_both ) 
+
+```
+Innovators to Outcome Ratio 
+
+--------------------------------- Mean simple path length and Mean Local Clustering Coefficient
+```{r echo=FALSE,fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_mean %>% filter() %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = VD, y = MSCl, shape == IO_Ratio_O, color = IO_Ratio_O)) +
+    #geom_histogram(binwidth=0.01)+
+      geom_point (size = 2) + 
+  # geom_smooth(span=0.8)+
+    xlab("Mean Simple Path Length") +
+    ylab("Mean Local Clustering Coefficient") + 
+   #labs(title = "MPL")+
+    scale_color_viridis_d()+
+  scale_x_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid(Tipping_Strategy ~ Innovators, labeller = label_both ) 
+
+```
+--------------------------------- Mean Complex path length and Mean Local Clustering Coefficient
+```{r echo=FALSE,fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_mean %>% filter() %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = MCPL, y = MSCl, shape == IO_Ratio_O, color = IO_Ratio_O)) +
+    #geom_histogram(binwidth=0.01)+
+      geom_point (size = 2) + 
+  # geom_smooth(span=0.8)+
+    xlab("Mean Complex Path Length") +
+    ylab("Mean Local Clustering Coefficient") + 
+   #labs(title = "MPL")+
+    scale_color_viridis_d()+
+  scale_x_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid(Tipping_Strategy ~ Innovators, labeller = label_both ) 
+
+```
+---------------Simulation Time
+
+
+
+--------------------------------- Mean Simple Path Length
+```{r echo=FALSE,fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_mean %>% filter() %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = MPL, y = Sim_Time, shape == Tipping_Strategy, color = Tipping_Strategy)) +
+    #geom_histogram(binwidth=0.01)+
+      geom_point (size = 2) + 
+   geom_smooth(span=0.8)+
+    xlab("Mean_Simple_Path_Length") +
     ylab("Sim_Time") + 
-   labs(title = "Percentage Sim_Time for Mean_Path_Length",
-       subtitle = "Rewiring_Proportion == 0.05/0.25//0.45, Dekkers_Power == 1/3/5/7, Pop_size == 420, Decision_Module == Threshold, Rep_Runs == 50")+
+   #labs(title = "MPL")+
     scale_color_viridis_d()+
+  scale_y_log10()+
+  scale_x_log10()+
     theme_bw()+
     theme(strip.background = element_rect(fill="black"),
           strip.text = element_text(size=12, colour="white", face = "bold"), 
           plot.title = element_text( size = 18), 
           plot.subtitle = element_text( size = 15),
           axis.title = element_text( size = 18) ) +
-   facet_grid( Threshold_Pop ~ Innovators, labeller = label_both ) 
-
-
+   facet_grid( ~ Innovators, labeller = label_both ) 
 
 ```
 
-
------------------------- Mean Clustering Coefficient
-```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
-
+--------------------------------- Mean Complex Path Length
+```{r echo=FALSE,fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
 # "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-clean_df %>% filter() %>%
+df_mean %>% filter() %>%
    dplyr::sample_frac(1) %>%
-ggplot(aes(x = Mean_CC, y = Green_Percentage, color=Tipping_Strategy)) +
-    geom_point(size=2)+
-    xlab("Mean-Clustering-Coefficient") +
-    ylab("Green_Percentage") + 
-   labs(title = "Percentage Majroity Green for Mean_Clustering_Coefficient",
-       subtitle = "Rewiring_Proportion == 0.05/0.25//0.45, Dekkers_Power == 1/3/5/7, Pop_size == 420, Decision_Module == Threshold, Rep_Runs == 50")+
-    scale_color_viridis_d()+
-    theme_bw()+
-    theme(strip.background = element_rect(fill="black"),
-          strip.text = element_text(size=12, colour="white", face = "bold"), 
-          plot.title = element_text( size = 18), 
-          plot.subtitle = element_text( size = 15),
-          axis.title = element_text( size = 18) ) +
-   facet_grid( Tipping_Strategy ~ Innovators, labeller = label_both ) 
-
-
-
-```
-```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
-
-# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-clean_df %>% filter() %>%
-   dplyr::sample_frac(1) %>%
-ggplot(aes(x = Mean_CC, y = Sim_Time, color=Tipping_Strategy)) +
-    geom_point(size=2)+
-    xlab("Mean-Clustering-Coefficient") +
-    ylab("Simulation_Time ") + 
-   labs(title = "Percentage Simulation_Time for Mean_Clustering_Coefficient",
-       subtitle = "Rewiring_Proportion == 0.05/0.25//0.45, Dekkers_Power == 1/3/5/7, Pop_size == 420, Decision_Module == Threshold, Rep_Runs == 50")+
-    scale_color_viridis_d()+
-    theme_bw()+
-    theme(strip.background = element_rect(fill="black"),
-          strip.text = element_text(size=12, colour="white", face = "bold"), 
-          plot.title = element_text( size = 18), 
-          plot.subtitle = element_text( size = 15),
-          axis.title = element_text( size = 18) ) +
-   facet_grid( Threshold_Pop ~ Innovators, labeller = label_both ) 
-
-```
-
-
-
-Sensitivity to Dekkers_Power and Rewiring_Proportion
-```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
-
-# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-clean_df  %>%
-   dplyr::sample_frac(1) %>%
-ggplot(aes(x = Innovators, y=Majority_Green, shape=duration_to_decision, fill=Tipping_Strategy, color=Tipping_Strategy)) +
-    geom_point(size=3) +
-    xlab("Social Innovators") +
-    ylab("Majority Green") + 
-    labs(title = "Mean Majority Green across 75 repetitive runs")+
- scale_shape_binned()+
-   scale_color_manual(values=c('red', 'darkgreen','blue'))+
-    theme_bw()+
- # xlim(0, 11000)+
-    theme(strip.background = element_rect(fill="black"),
-          strip.text = element_text(size=12, colour="white", face = "bold"), 
-          plot.title = element_text( size = 18), 
-          plot.subtitle = element_text( size = 15),
-          axis.title = element_text( size = 18) ) +
-   facet_grid(Rewiring_Proportion~Dekkers_Power, labeller = label_both ) 
-
-
-
-```
-
-```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
-clean_df$Innovators <- as.factor(clean_df$Innovators)
-# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-clean_df %>% filter(duration_to_decision ==  1)  %>%
-   dplyr::sample_frac(1) %>%
-ggplot(aes(x = Innovators, y=Sim_Time, fill=Tipping_Strategy)) +
-    #geom_point(aes(color=Majority_Green)) +
-#  geom_point(data = df_mean,aes(x = Innovators, y=Majority_Green, shape=Tipping_Strategy, color=Tipping_Strategy)) +
-    geom_boxplot() +
-    xlab("Social Innovators") +
+ggplot(aes(x = MCPL, y = Sim_Time, shape == Tipping_Strategy, color = Tipping_Strategy)) +
+    #geom_histogram(binwidth=0.01)+
+      geom_point (size = 2) + 
+   geom_smooth(span=0.8)+
+    xlab("Mean_Complex_Path_Length") +
     ylab("Sim_Time") + 
-    labs(title = "Sim time distribution across 75 repetitive runs")+
-   scale_color_viridis_d()+
-  scale_y_log10()+ #sec.axis = sec_axis(~.*1/log(.), name="Second Axis"))+
+   #labs(title = "MPL")+
+    scale_color_viridis_d()+
+  scale_x_log10()+
+  scale_y_log10()+
     theme_bw()+
- # xlim(0, 11000)+
     theme(strip.background = element_rect(fill="black"),
           strip.text = element_text(size=12, colour="white", face = "bold"), 
           plot.title = element_text( size = 18), 
           plot.subtitle = element_text( size = 15),
           axis.title = element_text( size = 18) ) +
-   facet_grid(Rewiring_Proportion~Dekkers_Power, labeller = label_both ) 
-
-
+   facet_grid( ~ Innovators, labeller = label_both ) 
 
 ```
+
+
+--------------------------------- Variance Node Degree
+```{r echo=FALSE,fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_mean %>% filter() %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = VD, y = Sim_Time, shape == Tipping_Strategy, color = Tipping_Strategy)) +
+    #geom_histogram(binwidth=0.01)+
+      geom_point (size = 2) + 
+   geom_smooth(span=0.8)+
+    xlab("Variance_Node_Degree") +
+    ylab("Sim_Time") + 
+   #labs(title = "MPL")+
+    scale_color_viridis_d()+
+ # scale_x_log10()+
+  scale_y_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid( ~ Innovators, labeller = label_both ) 
+
+```
+
+
+--------------------------------- Mean Local Clustering Coefficient
+```{r echo=FALSE,fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_mean %>% filter() %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = MSCl, y = Sim_Time, shape == Tipping_Strategy, color = Tipping_Strategy)) +
+    #geom_histogram(binwidth=0.01)+
+      geom_point (size = 2) + 
+   geom_smooth(span=0.8)+
+    xlab("Mean Local Clustering Coefficient") +
+    ylab("Sim_Time") + 
+   #labs(title = "MPL")+
+    scale_color_viridis_d()+
+ # scale_x_log10()+
+  scale_y_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid( ~ Innovators, labeller = label_both ) 
+
+```
+
+
+--------------------------------- Mean Global Clustering Coefficient
+```{r echo=FALSE,fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_mean %>% filter() %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = GCC, y = Sim_Time, shape == Tipping_Strategy, color = Tipping_Strategy)) +
+    #geom_histogram(binwidth=0.01)+
+      geom_point (size = 2) + 
+   geom_smooth(span=0.8)+
+    xlab("Global Clustering Coefficient") +
+    ylab("Sim_Time") + 
+   #labs(title = "MPL")+
+    scale_color_viridis_d()+
+ # scale_x_log10()+
+  scale_y_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid( ~ Innovators, labeller = label_both ) 
+
+```
+
+
+
+--------------------------------- Variance Local Clustering Coefficient
+```{r echo=FALSE,fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_mean %>% filter() %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = VCCo, y = Sim_Time, shape == Tipping_Strategy, color = Tipping_Strategy)) +
+    #geom_histogram(binwidth=0.01)+
+      geom_point (size = 2) + 
+   geom_smooth(span=0.8)+
+    xlab("Variance Local Clustering Coefficient") +
+    ylab("Sim_Time") + 
+   #labs(title = "MPL")+
+    scale_color_viridis_d()+
+ # scale_x_log10()+
+  scale_y_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid( ~ Innovators, labeller = label_both ) 
+
+```
+
+
+
 

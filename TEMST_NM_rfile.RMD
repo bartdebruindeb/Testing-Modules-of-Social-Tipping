@@ -64,7 +64,7 @@ source("functions_behaviorspace_table_output_handling.R")
 #NOTE: if csv files are placed in the workdirec, then leave filesPath unchanged
 filesPath <- ""
 ### MANUAL INPUT: specify filenames ###
-filesNames <- c("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/experimentTH_DR_840-1601876.csv")
+filesNames <- c("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/Network_Metrics-1700765.csv")
 
 
 ```
@@ -89,27 +89,31 @@ printColumnNames(df)
     "Run_Number",
     "Dekkers_Power",
    "Node_Degree",
-     "Tipping_Strategy",
-  #    "Communities",
-     "Rewiring_Proportion",
+  #   "Tipping_Strategy",
+      "Communities",
+     "RP",
   #  "duration_to_decision",
-   #  "Population_Size",
-  #    "Clustering_Coefficient",
-      "Innovators",
-  "Threshold_Pop",
-      "ticks",
-    "Mean_CC",
+ #    "Population_Size",
+      "CC",
+  #    "Innovators",
+  # "Threshold_Pop",
+  #    "ticks",
+    "Mean_SCC",
     "Mean_EC",
     "Mean_BC",
-    "Mean_PR",
-    "Mean_Path_Length",
+    "Mean_CCC",
+ "Mean_CLUS",
+  "MWPL",
+  #"MOD",
+    "MPL",
      "Var_CC",
     "Var_EC",
     "Var_BC",
-    "Var_PR",
+    "Var_CCC",
+ "Var_CLUS",
        "Majority_Green",
-   "Green_Percentage",
-       "Sim_Time"
+   "Green_Percentage"
+  #     "Sim_Time"
  
     )
 
@@ -124,7 +128,7 @@ if (length(variable_names) == length(new_variable_names)) {
 }
 
 
-#clean_df <- clean_df[!(clean_df$Mean_Path_Length %in% "false"),]
+
 ```
 
 
@@ -137,22 +141,50 @@ if (length(variable_names) == length(new_variable_names)) {
 #transform 'measurement' variable to numeric (as to avoid ggplot errors)
 #clean_df$NCSAG <- as.numeric(clean_df$NCSAG)
 #clean_df$NCSAB <- as.numeric(clean_df$NCSAB)
-clean_df$Sim_Time <- as.numeric(clean_df$Sim_Time)
-clean_df$Green_Percentage <- as.numeric(clean_df$Green_Percentage)
-clean_df$Threshold_Pop <- as.factor(clean_df$Threshold_Pop)
+#clean_df$Sim_Time <- as.numeric(clean_df$Sim_Time)
+#clean_df$Green_Percentage <- as.numeric(clean_df$Green_Percentage)
+#clean_df$Threshold_Pop <- as.factor(clean_df$Threshold_Pop)
 
-#clean_df$Node_Degree <- as.factor(clean_df$Node_Degree)
+clean_df$Node_Degree <- as.factor(clean_df$Node_Degree)
 #clean_df$Mean_Cluster_Coefficient <- as.factor(clean_df$Mean_Cluster_Coefficient)
-clean_df$Majority_Green <- as.numeric(clean_df$Majority_Green)
+#clean_df$Majority_Green <- as.numeric(clean_df$Majority_Green)
 clean_df$Dekkers_Power <- as.factor(clean_df$Dekkers_Power)
 #clean_df$duration_to_decision <- as.factor(clean_df$duration_to_decision)
-clean_df$Rewiring_Proportion<- as.factor(clean_df$Rewiring_Proportion)
+clean_df$RP<- as.factor(clean_df$RP)
 #clean_df$Stop_Time <- as.factor(clean_df$Stop_Time)
 #clean_df$Population_Size <- as.factor(clean_df$Population_Size)
-clean_df$Innovators <- as.factor(clean_df$Innovators)
-clean_df$Tipping_Strategy<- as.factor(clean_df$Tipping_Strategy)
-#clean_df$Communities<- as.factor(clean_df$Communities)
-#clean_df$Clustering_Coefficient<- as.factor(clean_df$Clustering_Coefficient)
+#clean_df$Innovators <- as.factor(clean_df$Innovators)
+#clean_df$Tipping_Strategy<- as.factor(clean_df$Tipping_Strategy)
+clean_df$Communities<- as.factor(clean_df$Communities)
+clean_df$CC<- as.factor(clean_df$CC)
+#clean_df$MPL <- as.numeric(clean_df$MPL)
+#clean_df$MWPL <- as.numeric(clean_df$MWPL)
+
+clean_df <- mutate(clean_df, MPL_Ratio = MWPL / MPL )
+
+
+```
+
+```{r include=false}
+
+#df_long <- dplyr::select(clean_df)
+df_long <- gather(clean_df, variable, measurement, Mean_SCC:Green_Percentage)
+
+# SPECIFY VARIABLE MEASUREMENT SCALES -----------------------------------------------------
+### MANUAL INPUT: in order for ggplot and plotly to work, one must specify the following: ###
+#-> continuous decimal (floating) variables as 'numeric'
+#-> continuous integer variables as 'integer'
+#-> discrete (or categorical) variables as 'factor'
+
+#print an overview of variables and their measurement scales
+str(df_long)
+#transform 'measurement' variable to numeric (as to avoid ggplot errors)
+df_long$measurement <- as.numeric(df_long$measurement)
+#round 'measurement' variable to 4 decimals
+df_long$measurement <- round(df_long$measurement, 4)
+#convert categorical variables to factors (as to avoid ggplot errors)
+df_long$Run_Number <- as.integer(df_long$Run_Number)
+df_long$variable <- as.factor(df_long$variable)
 
 
 
@@ -164,51 +196,97 @@ clean_df$Tipping_Strategy<- as.factor(clean_df$Tipping_Strategy)
 ```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
 #df_mean$Threshold_Pop <- as.factor(df_mean$Threshold_Pop)
 # "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-clean_df %>% filter() %>%
+clean_df %>% filter(Node_Degree == 10) %>%
    dplyr::sample_frac(1) %>%
-ggplot(aes(x = Mean_Path_Length, y = Green_Percentage, color=Tipping_Strategy)) +
-    geom_point(size=2)+
+ggplot(aes(x = Mean_CLUS, y = MPL_Ratio, shape= Communities, size=Dekkers_Power, color=CC)) +
+    geom_point()+
     xlab("Mean_Path_Length") +
-    ylab("Green Percentage") + 
-   labs(title = "Percentage Majroity Green for Mean_Path_Length",
-       subtitle = "Rewiring_Proportion == 0.05/0.25//0.45, Dekkers_Power == 1/3/5/7, Pop_size == 420, Decision_Module == Threshold, Rep_Runs == 50")+
+    ylab("Mean_Clustering_Coefficient") + 
+   labs(title = "Mean Path Length for network metrics")+
     scale_color_viridis_d()+
+ # scale_y_log10()+
+#scale_x_log10()+
     theme_bw()+
     theme(strip.background = element_rect(fill="black"),
           strip.text = element_text(size=12, colour="white", face = "bold"), 
           plot.title = element_text( size = 18), 
           plot.subtitle = element_text( size = 15),
           axis.title = element_text( size = 18) ) +
-   facet_grid( Threshold_Pop ~ Innovators, labeller = label_both ) 
+   facet_grid( RP ~ Node_Degree, labeller = label_both ) 
 
 
 
 ```
 ```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
-
+#df_mean$Threshold_Pop <- as.factor(df_mean$Threshold_Pop)
 # "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
-clean_df %>% filter() %>%
+df_long %>% filter(variable == "MPL_Ratio") %>%
    dplyr::sample_frac(1) %>%
-ggplot(aes(x = Mean_Path_Length, y = Sim_Time, color=Tipping_Strategy)) +
-    geom_point(size=1)+
-    xlab("Mean_Path_Length") +
-    ylab("Sim_Time") + 
-   labs(title = "Percentage Sim_Time for Mean_Path_Length",
-       subtitle = "Rewiring_Proportion == 0.05/0.25//0.45, Dekkers_Power == 1/3/5/7, Pop_size == 420, Decision_Module == Threshold, Rep_Runs == 50")+
+ggplot(aes(x = measurement, y = Rewiring_Proportion, size=Communities, color=Clustering_Coefficient)) +
+    geom_point(size=2)+
+    xlab("Mean_Complex_Path_Length") +
+    ylab("Rewiring_Proportion") + 
+   labs(title = "Mean Complex Path Length for network metrics")+
     scale_color_viridis_d()+
+  scale_x_log10()+
     theme_bw()+
     theme(strip.background = element_rect(fill="black"),
           strip.text = element_text(size=12, colour="white", face = "bold"), 
-          plot.title = element_text( size = 18),
-          axis.text.x = element_text(angle = 90),
+          plot.title = element_text( size = 18), 
           plot.subtitle = element_text( size = 15),
           axis.title = element_text( size = 18) ) +
-   facet_grid( Threshold_Pop ~ Innovators, labeller = label_both ) 
+   facet_grid( Dekkers_Power ~ Node_Degree, labeller = label_both ) 
 
 
 
 ```
 
+```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Threshold_Pop <- as.factor(df_mean$Threshold_Pop)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_long %>% filter(variable == "Mean_SCC") %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = measurement, y = Rewiring_Proportion, size = Communities, color=Clustering_Coefficient)) +
+    geom_point(shape = 21 )+
+    xlab("Mean_Closeness_Centrality") +
+    ylab("Rewiring_Proportion") + 
+   labs(title = "Mean Closeness Centrality for network metrics")+
+    scale_color_viridis_d()+
+  scale_x_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid( Dekkers_Power ~ Node_Degree, labeller = label_both ) 
+
+
+
+```
+```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
+#df_mean$Threshold_Pop <- as.factor(df_mean$Threshold_Pop)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+df_long %>% filter(variable == "Mean_CCC") %>%
+   dplyr::sample_frac(1) %>%
+ggplot(aes(x = measurement, y = Rewiring_Proportion, shape = Communities, color=Clustering_Coefficient)) +
+    geom_point(size=2)+
+    xlab("Mean Complex Closeness Centrality") +
+    ylab("Rewiring_Proportion") + 
+   labs(title = "Mean Complex Closeness Centrality for network metrics")+
+    scale_color_viridis_d()+
+  scale_x_log10()+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 18), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 18) ) +
+   facet_grid( Dekkers_Power ~ Node_Degree, labeller = label_both ) 
+
+
+
+```
 
 ------------------------ Mean Clustering Coefficient
 ```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}

@@ -9,7 +9,7 @@ loadData <- function(p_files_path, p_files_names) {
     #bind data from dataframe into new dataframe
     if (exists('t_df') && is.data.frame(get('t_df'))) {
       temp_df <- read.csv(paste(p_files_path, p_files_names[i], sep=""), skip = 6, sep = ",",head=TRUE,stringsAsFactors = TRUE)
-      temp_df$X.run.number. <- temp_df$X.run.number + max_run_number
+      #temp_df$X.run.number. <- temp_df$X.run.number 
       t_df <- rbind(t_df, temp_df)
     }  else {
       t_df <- read.csv(paste(p_files_path, p_files_names[i], sep=""), skip = 6, sep = ",",head=TRUE,stringsAsFactors = TRUE)

@@ -64,7 +64,7 @@ source("functions_behaviorspace_table_output_handling.R")
 #NOTE: if csv files are placed in the workdirec, then leave filesPath unchanged
 filesPath <- ""
 ### MANUAL INPUT: specify filenames ###
-filesNames <- c("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Resin_dummy mem and cpu test-table.csv")
+filesNames <- c("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/temst experiment7DR-table.csv")
 
 
 ```
@@ -86,6 +86,33 @@ printColumnNames(df)
 
   ### MANUAL INPUT: specify new (easy-to-work-with) variable names ###
   new_variable_names <- list(
+       "Run_Number",
+   # "Dekkers_Power",
+  #  "Node_Degree",
+     "Tipping_Strategy",
+      "Communities",
+     "Rewiring_Proportion",
+   # "duration_to_decision",
+   #  "Population_Size",
+      "Clustering_Coefficient",
+      "Innovators",
+      "ticks",
+    "Mean_Clos",
+    "Mean_EC",
+    "Mean_BC",
+    "Mean_CCC",
+   "Mean_Clus",
+    "Global_Clus",
+    "MCPL",
+    "MPL",
+     "Var_CC",
+    "Var_EC",
+    "Var_BC",
+    "Var_CCC",
+    "Var_Clus",
+    "Majority_Green",
+   "Green_Percentage",
+    "Sim_Time",
   "Mem",
   "CPU_Time"
   )
@@ -157,27 +184,24 @@ Modularity
 
 ```{r echo=FALSE, fig.height=15, fig.width=15, message=FALSE, warning=FALSE, results='asis'}
     
-df_long %>% filter((variable == "NCSAG" ),
-                    # variable == "Frequency_1_2"|
-                    # variable == "Frequency_1_3"),
-                    Social_Entrepeneurs == 0.1,   Average_Node_Degree == 6)  %>%
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+clean_df %>% filter() %>%
    dplyr::sample_frac(1) %>%
-   ggplot(aes(x = measurement, color = variable, fill = variable)) +
-     geom_histogram(position="identity", alpha = 0.4, breaks=c(0,1, 5, 10, 15, 20, 30 ,40 ,50,200, 500)) +
-  
-    xlab("Tipped") +
-    ylab("Count") + 
-#    labs(title = "Evolution of Modularity (Leiden_algorithm , rp == 0.4)",
- #      subtitle = "Altering Factor: ITEMS, Levels == 6, reps == 5, DoC == WW, Pop == 250 ")+
-  scale_color_brewer(palette="Dark2") + 
-  scale_fill_brewer(palette="Dark2")  +
+ggplot(aes(x = CPU_Time)) +
+    geom_histogram(binwidth=0.01)+
+ # geom_smooth(span=0.8)+
+    xlab("Sim_Time") +
+    ylab("Runs") + 
+   labs(title = "Rewiring_Proportion==0.45")+
+    scale_color_viridis_d()+
+  #scale_y_log10()+
     theme_bw()+
     theme(strip.background = element_rect(fill="black"),
           strip.text = element_text(size=12, colour="white", face = "bold"), 
           plot.title = element_text( size = 18), 
           plot.subtitle = element_text( size = 15),
           axis.title = element_text( size = 18) ) +
-      facet_grid( Tipping_Strategy ~ Network_Design , labeller = label_both ) 
+   facet_grid( ~ Innovators, labeller = label_both ) 
 
 
 

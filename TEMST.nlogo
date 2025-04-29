@@ -16,42 +16,123 @@ globals [
   tick-ended
   gcc
   MPL
-  MCPL
+  MCRPL
   count-people-updated-this-tick
   green-percentage
+  max-cc-weight
+  MSCe
+  MSCl
+  MCCe
+  VCCe
+  VEC
+  VBC
+  VCCo
+  VD
+  MEC
+  MBC
+  ratio-influencers-innovators
+  influencers
 
 ]
+
 breed[people person]
-undirected-link-breed [connections connection]
+directed-link-breed [connections connection]
 connections-own [
-  connection-weight]
+  community-bridge?
+  complex-centrality-weight
+  complex-connection-weight
+  first-side?
+]
 people-own [
+  peers
   my-behavior
   my-behavior-t-1
   ticks-to-new-decision
   my-community
-  social-entrepeneur?
-  number-of-connections
+  social-innovator?
+  number-of-peers
   my-threshold
+  Simple-Centrality
+  Complex-Centrality
+  Clus_Coefficient
 
 ]
+
+;to profile
+ ; profiler:reset                                       ;; set up the model
+ ; profiler:start                                 ;; start profiling
+ ; setup                               ;; run something you want to measure
+ ; while [report-sim-ended = false] [go]
+ ; profiler:stop
+ ; print profiler:report          ;; stop profiling
+  ;csv:to-file "profiler_data.csv" profiler:data  ;; save the results
+                                 ;; clear the data;
+;end
 
 to setup
   clear-all
   reset-ticks
-  if static-seed? [random-seed seed]
-  ask patches [set pcolor white]
+  if static-seed? [random-seed new-seed ] ;determine-seed]
   setup-people
-  setup-network
-  if layout-network? [repeat 10 [layout-network]]
-  rewire
-  setup-social-entrepeneurs
+  complex-path-weight
+  setup-social-innovators
   setup-metrics
+  update-plots
+  ;random-seed new-seed
 
 
 end
 
+to-report determine-seed
+  let dekkers-power-settings (list 1 3 5 7)
+  let n-communities-settings (list 1 5 10)
+  let rewiring-proportion-settings (list 0.01 0.05 0.1 0.2)
+  let clustering-coefficient-settings (list 1 1.4 1.8 2.2)
+  let reporter 1 + position dekkers-power dekkers-power-settings * 1 + position n-communities n-communities-settings * 4 + position rewiring-proportion rewiring-proportion-settings * 12 + position clustering-coefficient clustering-coefficient-settings * 64
+
+  report reporter
+end
+
+to create-person
+  set my-threshold threshold-pop ;normalize-data-in-range threshold-pop 0.15 0 1
+      set size 3
+      set color blue
+      fd 10
+end
+
 to setup-people
+  if network-generator = "Small-World" [
+    nw:generate-watts-strogatz people connections population-size 6 rewiring-proportion [
+      create-person ]
+    stop
+  ]
+  if network-generator = "Kleinberg" [
+    nw:generate-small-world people connections 29 29 clustering-coefficient true [
+      create-person]
+        ask connections [
+      ;print end1
+      ;print end2
+      ask end1 [
+        create-connection-from [end2] of myself
+      ]
+
+    ]
+    stop
+  ]
+  if network-generator = "Scale-Free" [
+    nw:generate-preferential-attachment people connections population-size 3 [
+      create-person]
+    ask connections [
+      ask end1 [
+        create-connection-from [end2] of myself
+      ]
+    ]
+    stop
+  ]
+
+
+
+
   set people-per-community population-size / n-communities
   if average-node-degree > people-per-community [error "average-node-degree is bigger than the people-per-community"]
 
@@ -59,14 +140,14 @@ to setup-people
   repeat n-communities [
 
     create-people people-per-community [
+      create-person
       set my-community index
-      set my-threshold threshold-pop
-      set size 3
-      set color blue
-      set ticks-to-new-decision random duration-to-decision
         ]
     set index index + 1
   ]
+   setup-network
+   if layout-network? [
+    layout-network]
 end
 
 
@@ -75,7 +156,7 @@ to set-default-settings
   ;set seed 2
  ; set average-node-degree 4
   set module "stochastic"
-  set tipping-strategy "Shotgun"
+  set seeding-strategy "Shotgun"
   set n-communities 4
   set rewiring-proportion 0.15
   set clustering-coefficient 2
@@ -83,12 +164,16 @@ to set-default-settings
   set static-seed? false
  ; set k2 0.0000011
  ; set layout "spring"
- ; set social-entrepeneurs 0.10
+ ; set social-innovators 0.10
   set sim-ended? false
+ ; ask patch 37 43 [ output-print ticks]
 
 end
 
 to setup-network
+
+
+
 
   ; The social network is determined by the number of communities, number of members per community, clustering component, rewiring-proportion, dekkers-power.
   ; The network consists of n-communities. Firstly (Step 1) the agent with the highest label (max-who-community) of community n is connected with the agents with the median label of community n + 1.
@@ -98,109 +183,72 @@ to setup-network
   ; Where q is the clustering component. For high values of q, agents make connections with more closely labeled nodes.
   ; Lastly the connections are rewired with random agents irrespectively of their community using the rewiring-proportion and dekkers-power. (See rewire procedure).
 
-  let max-iterations average-node-degree * population-size / 2
-  let iterations-for-network-formation 0
-  ; Step 1 Connect different communities with one another with by connecting the highest who of one community with the middle who of the other community.
-  if n-communities > 1 [
-    let index 1
-    let new-neighbor 0
-    repeat n-communities [
-      let max-who-community max [who] of people with [my-community = index]
-      ask person max-who-community [
-        ifelse who = max [who] of people [
-          set new-neighbor min [who] of people + ceiling (people-per-community / 2)
-        ][
-          set new-neighbor who + ceiling (people-per-community / 2) ]
-        create-connection-with person new-neighbor
-        set iterations-for-network-formation iterations-for-network-formation + 1
-      ]
-      set index index + 1
-    ]
+  let lwcc 2
+  while [lwcc > 1] [
+    ask connections [die]
+    setup-communities-connections
+    rewire
+    set lwcc length nw:weak-component-clusters
   ]
-  ;Step 2 Continue adding connections until the max connections is reached.
-  while [max-iterations > iterations-for-network-formation] [
-    ask min-one-of people [count connection-neighbors] [
-      let community-list sort [who] of other people with [my-community = [my-community] of myself and not connection-neighbor? myself]
-      let list-1 map [i -> abs(who - i)]  community-list
-      let kleinburg-list (list)
-      foreach list-1 [
-        i -> if i > (people-per-community / 2) [
-          set i people-per-community - i]
-        set kleinburg-list lput i kleinburg-list
-      ]
-      set kleinburg-list map [i -> i ^ (clustering-coefficient * -1)] kleinburg-list
-      let random-number random-float sum kleinburg-list
-      let index-2 0
-      while [random-number > item index-2 kleinburg-list] [
-        set random-number random-number - item index-2 kleinburg-list
-        set index-2 index-2 + 1
-      ]
-
-      create-connection-with person item index-2 community-list
-      set iterations-for-network-formation iterations-for-network-formation + 1
-    ]
-  ]
-
-end;
-
-to complex-path-length
-  ask connections [
-    set connection-weight 1 / (1 + count [connection-neighbors] of end1 - count ([connection-neighbors] of end1) who-are-not ([connection-neighbors] of end2))
-  ]
-
 end
 
 to rewire
-  ; ;Based on the rewiring-proportion and dekkers-power the network is rewired. In such a way a contineous scale can be achieved with having (non)isolated communities and with varying node-degree.
+  ; ;Based on the rewiring-proportion and dekkers-power the network is rewired.
 
-
-  ask connections [
+  ask connections with [first-side? = true] [
     ;Similarly as in Kawachi rewiring process the Links are rewired with probability p/3, where p is a rewiring parameter, and the rewiring is repeated three times, so that the probability of
     ;an edge being rewired is 1 – (1 – p/3)^3
-
     repeat 3 [
       if random-float 1 < (rewiring-proportion / 3) [
         let NodeA 0
         let NodeB 0
+        ask connection [who] of end2 [who] of end1 [
+              die]
+      ifelse count ([out-connection-neighbors] of end1) > (count [out-connection-neighbors] of end2) [
+        set NodeA end1
+        set NodeB end2
+      ][
+        set NodeA end2
+        set NodeB end1
+      ]
 
-        ;Ensure that the Node with the lowest node degree is the one to get rewired to limit isolated nodes
-        ifelse count [connection-neighbors] of end1 <= count [connection-neighbors] of end2 [
-          set NodeA end1
-          set NodeB end2
-        ][
-          set NodeA end2
-          set NodeB end1
-        ]
 
-        ;First ensure nodeA to rewire with an isolated nodes
         ask NodeA [
-          let isolated-nodes other people with [count connection-neighbors = 0 and who != [who] of NodeB]
+          ;First ensure nodeA to rewire with an isolated nodes
+        let isolated-nodes other people with [count connection-neighbors = 0]
         ; If there are no isolated nodes, create connection with new node using 'new-rewired-node' reporter
-          ifelse any? isolated-nodes [
-            create-connection-with one-of isolated-nodes ][
-            create-connection-with new-rewired-node NodeB]
+        ifelse any? isolated-nodes [
+          let nn1 one-of isolated-nodes
+            create-connection-to nn1
+            create-connection-from nn1
+          ][
+          let nn2 new-rewired-node NodeB
+            create-connection-to nn2
+            create-connection-from nn2
+          ]
         ]
         set rewired rewired + 1
+       ; Print NodeA
+       ; print NodeB
         die
-
-        stop
       ]
     ]
   ]
+
 end
 
 to-report new-rewired-node [NodeB]
   ; The new node for rewiring is determined by the extend kawachi rewiring from (Dekker, 2007, see https://www.academia.edu/download/30698577/RealisticSocial_s20_Dekker_.pdf). Rewiring
   ; is biased so as to preferentially move links to be adjacent to highly linked nodes (nodes of high degree). The higher the degree of a node, the higher the likelyhood of establishing
   ; an edge with this particular node.
-
+  let agent-set-to-work-with other people who-are-not connection-neighbors
   ; Create an list of the unique node degree distribution of all people which are currently not connected to Node A including Node B
-  let unique-degree-of-nodes remove-duplicates sort [count connection-neighbors] of other people with [not member? myself connection-neighbors and who != [who] of NodeB]
+  let unique-degree-of-nodes remove-duplicates sort [count connection-neighbors] of other agent-set-to-work-with
   ;create a cumulative probability list in which the likelyhood of picking a node with degree d is determined by (d + 1) ^ dekkers-power * agents with that node-degree.
   let probability-list (list)
   foreach unique-degree-of-nodes [
     d ->
-    let p count people with [count connection-neighbors = d and not member? myself connection-neighbors and who != [who] of NodeB]
+    let p count agent-set-to-work-with  with [count connection-neighbors = d]
       ifelse length probability-list > 0 [
         let v max probability-list + ((d + 1) ^ dekkers-power) * p
         set probability-list lput v probability-list
@@ -224,89 +272,195 @@ to-report new-rewired-node [NodeB]
 
   ;Pick randomly one of the agents as a new friends that have the selected node-degree
 
-  let potential-friends other people with [count connection-neighbors = item position-in-list unique-degree-of-nodes and not member? myself connection-neighbors and who != [who] of NodeB]
-  if one-of potential-friends = nobody [error "one-of potential-friends = nobody"]
+  let potential-friends agent-set-to-work-with  with [count connection-neighbors = item position-in-list unique-degree-of-nodes]
   report one-of potential-friends
 
 end
 
+to setup-communities-connections
+
+  let max-iterations average-node-degree * population-size / 2
+  let iterations-for-network-formation 0
+  ; Step 1 Connect different communities with one another with by connecting the highest who of one community with the middle who of the other community.
+;  if n-communities > 1 [
+;    let index 1
+;    let new-neighbor 0
+;    repeat n-communities [
+;      let max-who-community max [who] of people with [my-community = index]
+;      ask person max-who-community [
+;        ifelse who = max [who] of people [
+;          set new-neighbor min [who] of people + ceiling (people-per-community / 2)
+;        ][
+;          set new-neighbor who + ceiling (people-per-community / 2) ]
+;        create-connection-from person new-neighbor
+;        create-connection-to person new-neighbor
+;        ask connection who [who] of person new-neighbor [
+;          set community-bridge? true]
+;           ask connection [who] of person new-neighbor who [
+;          set community-bridge? true]
+;        set iterations-for-network-formation iterations-for-network-formation + 1
+ ;     ]
+ ;     set index index + 1
+ ;   ]
+ ; ]
+  ;Step 2 Continue adding connections until the max connections is reached.
+  while [max-iterations > iterations-for-network-formation] [
+    ask min-one-of people [count connection-neighbors] [
+      let community-list sort [who] of other people with [my-community = [my-community] of myself and not connection-neighbor? myself]
+      let list-1 map [i -> abs(who - i)]  community-list
+      let kleinburg-list (list)
+      foreach list-1 [
+        i -> if i > (people-per-community / 2) [
+          set i people-per-community - i]
+        set kleinburg-list lput i kleinburg-list
+      ]
+      set kleinburg-list map [i -> i ^ (clustering-coefficient * -1)] kleinburg-list
+      let random-number random-float sum kleinburg-list
+      let index-2 0
+      while [random-number > item index-2 kleinburg-list] [
+        set random-number random-number - item index-2 kleinburg-list
+        set index-2 index-2 + 1
+      ]
+      let new-friend person item index-2 community-list
+      create-connection-to new-friend
+      create-connection-from new-friend
+      ask connection who [who] of new-friend [set first-side? true]
+
+      set iterations-for-network-formation iterations-for-network-formation + 1
+    ]
+  ]
+
+end
+
+to complex-path-weight
+  ask connections [
+   ; print [who] of end1
+   ; print [who] of end2
+    let N1 ([connection-neighbors] of end1) who-are-not end2
+    let N2 ([connection-neighbors] of end2) who-are-not end1
+    let Oij count N1 - count N1 who-are-not N2
+   ; print [who] of N1
+   ; print [who] of N2
+   ; print Oij
+    let Dij N2 who-are-not N1
+    ;  print [who] of connection-neighbors
+    let Rij count Dij with [count connection-neighbors - count connection-neighbors who-are-not N1 > 0]
+
+   ; print Dij
+    set complex-connection-weight 1 + Rij + Oij
+    set complex-connection-weight 1 / complex-connection-weight]
+
+  ask people [
+    set Complex-Centrality nw:weighted-closeness-centrality complex-connection-weight
+    set Simple-Centrality nw:closeness-centrality
+  ]
+end
 
 
-to setup-social-entrepeneurs ;;; Assigns which agents are the social entrepreneurs (green) at the start of the simulation. Based on Centola (2018) you choose between Shotgun (assinging the
- ; the social-entrepeneurs randomly), Snowball (one random-agent and it's connected peers), Silver-Bullets (Select the agents with heighest node-degree). An additonal scenario has been
+
+
+to setup-social-innovators ;;; Assigns which agents are the social entrepreneurs (green) at the start of the simulation. Based on Centola (2018) you choose between Shotgun (assinging the
+ ; the social-innovators randomly), Snowball (one random-agent and it's connected peers), Silver-Bullets (Select the agents with heighest node-degree). An additonal scenario has been
  ; added to instead of selecting the silver bullets (high degree nodes) the Outskirts (the low degree nodes).
 
 
-  let n-social-entrepreneurs ceiling (social-entrepeneurs * population-size)
+  let n-social-entrepreneurs ceiling (social-innovators * population-size)
 
 
-  if tipping-strategy = "Shotgun-NS" [
+  if seeding-strategy = "Shotgun-NS" [
     ask n-of n-social-entrepreneurs  people with [count my-connections != max [count my-connections] of people] [
-      setup-as-social-entrepeneur]]
+      setup-as-social-innovator]]
 
-   if tipping-strategy = "Shotgun" [
+   if seeding-strategy = "Shotgun" [
     ask n-of n-social-entrepreneurs  people [
-      setup-as-social-entrepeneur]]
+      setup-as-social-innovator]]
 
-    if tipping-strategy = "Silver-Bullets" [
+    if seeding-strategy = "Silver-Bullets" [
       ask max-n-of n-social-entrepreneurs people [count my-connections] [
-      setup-as-social-entrepeneur]]
-
-      if tipping-strategy = "Outskirts" [
-      ask min-n-of n-social-entrepreneurs people [nw:betweenness-centrality] [
-      setup-as-social-entrepeneur]]
-
-  if tipping-strategy = "Bridges"[
-    ask max-n-of n-social-entrepreneurs people [nw:betweenness-centrality] [
-      setup-as-social-entrepeneur]]
-  if tipping-strategy = "CCC" [
-    ask min-n-of n-social-entrepreneurs people [nw:weighted-closeness-centrality connection-weight] [
-      setup-as-social-entrepeneur]]
+      setup-as-social-innovator]]
 
 
-
-
-  if tipping-strategy = "Snowball" [
+  if seeding-strategy = "S_Closeness" [
     ; Ensure that agents that are connected to one another are also spatially closely located to another.
-    let factor sqrt count turtles
-    let index  n-social-entrepreneurs
-    let k one-of people
-    while [index > 0] [
+    let index n-social-entrepreneurs
+    let k max-one-of people [Simple-Centrality]
       ask k [
-        setup-as-social-entrepeneur
+        setup-as-social-innovator
         ask up-to-n-of index connection-neighbors [
-          setup-as-social-entrepeneur
+          setup-as-social-innovator
         ]
-        set index floor (social-entrepeneurs * population-size) - count people with [social-entrepeneur? = true]
-        set k min-one-of people with [my-behavior = 0] [distance myself]
+        set index floor (social-innovators * population-size) - count people with [social-innovator? = true]
+        while [index > 0] [
+          ask max-one-of people with [social-innovator? != true] [(count connection-neighbors - (count connection-neighbors who-are-not  people with [social-innovator? = true])) / count connection-neighbors ] [
+            setup-as-social-innovator]
+            set index index - 1
+          ]
+    ]
+  ]
+
+   if seeding-strategy = "CR_Closeness" [
+    ; Ensure that agents that are connected to one another are also spatially closely located to another.
+    let index n-social-entrepreneurs
+    let k max-one-of people [Complex-Centrality]
+      ask k [
+        setup-as-social-innovator
+        ask up-to-n-of index connection-neighbors [
+          setup-as-social-innovator
+        ]
+        set index floor (social-innovators * population-size) - count people with [social-innovator? = true]
+        while [index > 0] [
+          ask max-one-of people with [social-innovator? != true] [(count connection-neighbors - (count connection-neighbors who-are-not  people with [social-innovator? = true])) / count connection-neighbors ] [
+            setup-as-social-innovator]
+            set index index - 1
       ]
     ]
   ]
 
 end
 
-to setup-as-social-entrepeneur
+to setup-as-social-innovator
   set my-behavior-t-1 1
   set my-behavior 1
   set color green
   set size 5
-  set social-entrepeneur? true
+  set social-innovator? true
 end
 
 to setup-metrics
   ask people [
-    set number-of-connections count connection-neighbors
+    set peers connection-neighbors
+    set number-of-peers count connection-neighbors
+ ;   set Complex-Centrality nw:weighted-closeness-centrality connection-reinforcing-weight
+ ;   set Simple-Centrality nw:closeness-centrality
+    set Clus_Coefficient nw:clustering-coefficient
   ]
+  set influencers people with-max [number-of-peers]
+  set ratio-influencers-innovators count influencers with [social-innovator? = true] / count influencers
   set tipped? false
-  set cum-surface-area-green calc-surface-area-green
-  set norm-csag cum-surface-area-green
-  set norm-csab 1 - norm-csag
+ ; set cum-surface-area-green calc-surface-area-green
+ ; set norm-csag cum-surface-area-green
+ ; set norm-csab 1 - norm-csag
   set sim-ended? false
   set tick-ended 0
+  log-network-metrics
+  nw:set-context (first nw:get-context) (last nw:get-context)
+end
+
+to log-network-metrics
   set gcc global-clustering-coefficient
   set MPL nw:mean-path-length
-  complex-path-length
-  set MCPL nw:mean-weighted-path-length connection-weight
+  set MCRPL nw:mean-weighted-path-length complex-connection-weight
+;  set MSCe mean [Simple-Centrality] of people
+;  set MCCe mean [Complex-Centrality] of people
+  set MSCl mean [Clus_Coefficient] of people
+;  set VCCe variance [nw:closeness-centrality] of people
+ ; set VEC variance [nw:eigenvector-centrality] of people
+ ; set VBC variance [nw:betweenness-centrality] of people
+;  set VCCe variance [nw:weighted-closeness-centrality connection-reinforcing-weight] of people
+  set VCCo variance [Clus_Coefficient] of people
+  set VD variance [number-of-peers] of people
+ ; set MEC mean [nw:eigenvector-centrality] of people
+ ; set MBC mean [nw:betweenness-centrality] of people
 end
 
 to-report calc-surface-area-green
@@ -315,6 +469,8 @@ to-report calc-surface-area-green
 end
 
 to layout-network
+  ask patches [set pcolor white]
+   ask patch 37 43 [set plabel ticks set plabel-color black]
   if layout = "radial" and count turtles > 1 [
     let root-agent max-one-of turtles [ nw:closeness-centrality ]
     layout-radial turtles links root-agent
@@ -322,7 +478,7 @@ to layout-network
   if layout = "spring" [
     let factor people-per-community * 2
     if factor = 0 [ set factor 1 ]
-    repeat 1000 [layout-spring turtles links (1 / factor) (140 / factor) (10 / factor)]
+    repeat 100 [layout-spring people connections 1 1 (1 / population-size) * 10000  ]
   ]
   if layout = "circle" [
     layout-circle sort turtles max-pxcor * 0.9
@@ -346,80 +502,61 @@ end
 to go
   consider-adopting-new-behavior
   update-metrics
-  tick
+  tick-advance 1
+  if behaviorspace-experiment-name = "" [ update-plots ]
 end
 
 
 to consider-adopting-new-behavior
-  ask people [
-    if module = "stochastic" [
-      ifelse ticks-to-new-decision = 0 [
-        ifelse my-behavior = 0 [
-          ifelse random-float 1 < (count connection-neighbors with [my-behavior-t-1 = 1] + k1) / (count connection-neighbors + k2) [                   ; Where k1 < k2
-            set my-behavior 1
-            set color green
-            set ticks-to-new-decision duration-to-decision
-          ] [
-            set ticks-to-new-decision duration-to-decision]
-        ] [
-          ifelse random-float 1 < (count connection-neighbors with [my-behavior-t-1 = 0] + k1) / (count connection-neighbors + k2) [
-            set my-behavior 0
-            set color blue
-            set ticks-to-new-decision duration-to-decision
-          ][
-            set ticks-to-new-decision duration-to-decision]
-        ]
-      ] [
-        set ticks-to-new-decision ticks-to-new-decision - 1
-      ]
-    ]
-   if module = "threshold-model" [
-      if my-behavior = 0 [
-        if my-threshold < (count connection-neighbors with [my-behavior-t-1 = 1] + k1) / (count connection-neighbors + k2) [
+  ifelse module = "stochastic" [
+    ask people [
+      ifelse my-behavior = 0 [
+        if random-float 1 < (count peers with [my-behavior-t-1 = 1] + k1) / (number-of-peers + k2) [                   ; Where k1 < k2
           set my-behavior 1
           set color green
-          set count-people-updated-this-tick count-people-updated-this-tick +  1
         ]
+      ][
+        if random-float 1 < (count peers with [my-behavior-t-1 = 0] + k1) / (number-of-peers + k2) [
+          set my-behavior 0
+          set color blue
+        ]
+      ]
+    ]
+  ][
+  ask people [
+    if my-behavior = 0 [
+      if my-threshold < (count peers with [my-behavior-t-1 = 1] + k1) / (number-of-peers + k2) [
+        set my-behavior 1
+        set color green
+        set count-people-updated-this-tick count-people-updated-this-tick +  1
       ]
     ]
   ]
-    ask people [
-      set my-behavior-t-1 my-behavior
-    ]
+]
+ask people [
+    set my-behavior-t-1 my-behavior
+]
 end
+
 
 
 to update-metrics
 
-  set cum-surface-area-green cum-surface-area-green + calc-surface-area-green
-
-  set norm-csag cum-surface-area-green / (ticks + 1)
-  set norm-csab 1 - norm-csag
-  let total-people count people
   let g count people with [my-behavior = 1]
-  let gp 0
-  if g > 0 [set gp g / count people]
   let b count people with [my-behavior =  0]
-  if Tipped? != true and g > b [
-    set Tipped? true]
 
-  ifelse g > b [
-    set majority-green? 1
-  ][
-   set majority-green? 0
-  ]
 
-  if gp > Max-Green [
-    set Max-Green gp
-  ]
+
   if count-people-updated-this-tick = 0 and module = "threshold-model" [
     set sim-ended? true
-    set tick-ended ticks
+    set tick-ended ticks - 1
+    ;log-network-metrics
     set green-percentage (g + 1) / (b + g + 1) - 1 / (b + g + 1)
   ]
   if b = 0 or g = 0 and sim-ended? = false [
     set sim-ended? true
     set tick-ended ticks
+    ;log-network-metrics
     set green-percentage (g + 1) / (b + g + 1) - 1 / (b + g + 1)
   ]
   set count-people-updated-this-tick 0
@@ -462,10 +599,6 @@ to-report normalize-data-in-range [mean-data std-data low high]
   while [x < low or x > high] [
     set x precision (random-normal mean-data std-data) 3 ]
   report x
-end
-
-to-report node-degree
-  report count connection-neighbors
 end
 @#$#@#$#@
 GRAPHICS-WINDOW
@@ -534,43 +667,25 @@ CHOOSER
 469
 474
 514
-tipping-strategy
-tipping-strategy
-"Snowball" "Shotgun" "Shotgun-NS" "Silver-Bullets" "Outskirts" "Bridges" "CCC"
-6
+seeding-strategy
+seeding-strategy
+"Snowball" "Shotgun" "Shotgun-NS" "Silver-Bullets" "Outskirts" "Bridges" "CCC" "S_Closeness" "CD_Closeness" "CR_Closeness"
+3
 
 SLIDER
 336
 434
 477
 467
-social-entrepeneurs
-social-entrepeneurs
+social-innovators
+social-innovators
 0
 1
-0.06
+0.08
 0.01
 1
 NIL
 HORIZONTAL
-
-PLOT
-761
-18
-946
-138
-Connection distribution
-NIL
-NIL
-0.0
-50.0
-0.0
-10.0
-true
-false
-"" ""
-PENS
-"default" 1.0 1 -16777216 true "" "histogram [node-degree] of people"
 
 MONITOR
 638
@@ -578,40 +693,10 @@ MONITOR
 769
 536
 #social entrepeneurs
-count people with [ social-entrepeneur? = true]
+count people with [ social-innovator? = true]
 17
 1
 11
-
-MONITOR
-636
-537
-776
-582
-Mean-path-length
-nw:mean-path-length
-17
-1
-11
-
-PLOT
-1016
-163
-1522
-349
-Habit distribution
-NIL
-NIL
-0.0
-10.0
-0.0
-10.0
-true
-false
-"" ""
-PENS
-"Blue" 1.0 0 -13791810 true "" "plot count people with [my-behavior = 0] "
-"Green" 1.0 0 -13840069 true "" "plot count people with [my-behavior = 1] "
 
 SLIDER
 158
@@ -622,33 +707,11 @@ rewiring-proportion
 rewiring-proportion
 0
 1
-0.01
+0.1
 0.01
 1
 NIL
 HORIZONTAL
-
-MONITOR
-634
-590
-797
-635
-mean-clustering-coefficient
-mean [ nw:clustering-coefficient ] of people
-17
-1
-11
-
-MONITOR
-637
-644
-801
-689
-NIL
-global-clustering-coefficient
-17
-1
-11
 
 CHOOSER
 0
@@ -716,7 +779,7 @@ dekkers-power
 dekkers-power
 0
 10
-1.0
+6.0
 0.5
 1
 NIL
@@ -748,7 +811,7 @@ MONITOR
 769
 489
 Average node degree
-mean [count connection-neighbors] of people
+mean [count connections] of people / population-size
 17
 1
 11
@@ -804,7 +867,7 @@ SWITCH
 185
 static-seed?
 static-seed?
-1
+0
 1
 -1000
 
@@ -828,7 +891,7 @@ n-communities
 n-communities
 1
 7
-1.0
+5.0
 1
 1
 NIL
@@ -843,7 +906,7 @@ Population-Size
 Population-Size
 1
 840
-420.0
+840.0
 1
 1
 NIL
@@ -866,7 +929,7 @@ BUTTON
 755
 66
 NIL
-repeat 10 [layout-network]
+repeat 1 [layout-network]
 NIL
 1
 T
@@ -885,7 +948,7 @@ CHOOSER
 layout
 layout
 "spring" "circle" "tutte" "radial"
-0
+1
 
 SLIDER
 156
@@ -896,7 +959,7 @@ average-node-degree
 average-node-degree
 2
 10
-3.0
+6.0
 1
 1
 NIL
@@ -928,72 +991,11 @@ clustering-coefficient
 clustering-coefficient
 0
 12
-1.5
+7.95
 0.05
 1
 NIL
 HORIZONTAL
-
-PLOT
-1016
-349
-1526
-499
-Network Position of innovaters compared to total population
-NIL
-NIL
-0.0
-10.0
-0.0
-1.0
-true
-true
-"" ""
-PENS
-"betweenness centrality" 1.0 0 -16777216 true "" "plot mean [nw:betweenness-centrality] of people"
-"eigenvector-centrality" 1.0 0 -7500403 true "" "plot mean [nw:eigenvector-centrality] of people "
-"page-rank" 1.0 0 -2674135 true "" "plot mean [nw:page-rank] of people \n"
-"closeness-centrality" 1.0 0 -955883 true "" "plot mean [nw:closeness-centrality] of people "
-
-PLOT
-1014
-660
-1643
-810
-Average behavior of Top 5 agents with LOWEST score for:
-NIL
-NIL
-0.0
-10.0
-0.0
-1.0
-true
-true
-"" ""
-PENS
-"betweenness-centrality" 1.0 0 -16777216 true "" "plot mean [my-behavior] of min-n-of 5 people [nw:betweenness-centrality]"
-"Eigenvector-centrality" 1.0 0 -7500403 true "" "plot mean [my-behavior] of min-n-of 5 people [nw:EIGENVECTOR-centrality]"
-"Page-Rank" 1.0 0 -2674135 true "" "plot mean [my-behavior] of min-n-of 5 people [nw:PAGE-RANK]"
-"closeness-centrality" 1.0 0 -955883 true "" "plot mean [my-behavior] of min-n-of 5 people [nw:closeness-centrality]"
-
-PLOT
-1018
-11
-1522
-161
-CUM Surface-Area GREEN vs. BLUE
-NIL
-NIL
-0.0
-10.0
-0.0
-1.0
-true
-false
-"" ""
-PENS
-"Blue-SA" 1.0 1 -13345367 true "" "plot 1"
-"Green-SA" 1.0 1 -13840069 true "" "plot norm-csag"
 
 BUTTON
 0
@@ -1080,7 +1082,7 @@ threshold-pop
 threshold-pop
 0
 1
-0.45
+0.48
 0.01
 1
 NIL
@@ -1093,7 +1095,7 @@ SWITCH
 157
 layout-network?
 layout-network?
-1
+0
 1
 -1000
 
@@ -1120,44 +1122,138 @@ report-sim-ended
 11
 
 MONITOR
-891
-534
-1190
-579
+1120
+256
+1407
+301
 NIL
-nw:mean-weighted-path-length connection-weight
-17
-1
-11
-
-MONITOR
-833
-603
-995
-648
-NIL
-nw:modularity (list people)
+variance [number-of-peers] of people
 17
 1
 11
 
 PLOT
-840
-756
-1040
-906
-plot 1
+804
+21
+1004
+171
+plot 2
 NIL
 NIL
 0.0
-5.0
+50.0
 0.0
 10.0
 true
 false
 "" ""
 PENS
-"default" 0.2 1 -16777216 true "" "histogram [nw:weighted-closeness-centrality connection-weight] of people"
+"default" 1.0 1 -16777216 true "" "histogram [number-of-peers] of people"
+
+CHOOSER
+4
+488
+142
+533
+network-generator
+network-generator
+"Small-World" "Kleinberg" "Scale-Free" "custom"
+3
+
+MONITOR
+669
+582
+726
+627
+NIL
+MPL
+17
+1
+11
+
+MONITOR
+638
+536
+695
+581
+NIL
+MPL
+17
+1
+11
+
+MONITOR
+723
+549
+780
+594
+NIL
+GCC
+17
+1
+11
+
+PLOT
+1131
+137
+1331
+287
+plot 1
+NIL
+NIL
+0.0
+1.0
+0.0
+10.0
+true
+false
+"" ""
+PENS
+"default" 0.05 1 -16777216 true "histogram [my-threshold] of people" "histogram [my-threshold] of people"
+
+MONITOR
+1065
+424
+1253
+469
+NIL
+mean [my-threshold] of people
+17
+1
+11
+
+MONITOR
+917
+561
+1086
+606
+NIL
+ratio-influencers-innovators
+17
+1
+11
+
+MONITOR
+951
+636
+1061
+681
+NIL
+count influencers
+17
+1
+11
+
+MONITOR
+1094
+659
+1389
+704
+NIL
+mean [number-of-peers] of influencers
+17
+1
+11
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -1758,49 +1854,56 @@ NetLogo 6.4.0
       <value value="0.9"/>
     </enumeratedValueSet>
   </experiment>
-  <experiment name="experiment9DR" repetitions="200" runMetricsEveryStep="false">
+  <experiment name="experiment1DR" repetitions="1" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <exitCondition>report-sim-ended</exitCondition>
-    <metric>mean [nw:closeness-centrality] of people</metric>
-    <metric>mean [nw:eigenvector-centrality] of people</metric>
-    <metric>mean [nw:betweenness-centrality] of people</metric>
-    <metric>mean [nw:page-rank] of people</metric>
-    <metric>nw:mean-path-length</metric>
-    <metric>variance [nw:closeness-centrality] of people</metric>
-    <metric>variance [nw:eigenvector-centrality] of people</metric>
-    <metric>variance [nw:betweenness-centrality] of people</metric>
-    <metric>variance [nw:page-rank] of people</metric>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
     <metric>majority-green?</metric>
+    <metric>green-percentage</metric>
     <metric>tick-ended</metric>
     <enumeratedValueSet variable="seed">
       <value value="2"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="dekkers-power">
       <value value="1"/>
-      <value value="3"/>
-      <value value="5"/>
-      <value value="7"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="average-node-degree">
-      <value value="5"/>
+      <value value="4"/>
+      <value value="7"/>
+      <value value="10"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="module">
       <value value="&quot;stochastic&quot;"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="tipping-strategy">
-      <value value="&quot;Shotgun-NS&quot;"/>
+    <enumeratedValueSet variable="seeding-strategy">
       <value value="&quot;Shotgun&quot;"/>
-      <value value="&quot;Snowball&quot;"/>
       <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;S_Closeness&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="n-communities">
-      <value value="6"/>
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
       <value value="0.05"/>
-      <value value="0.25"/>
-      <value value="0.45"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="duration-to-decision">
       <value value="0"/>
@@ -1824,20 +1927,17 @@ NetLogo 6.4.0
       <value value="&quot;spring&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="clustering-coefficient">
-      <value value="2"/>
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="layout-network?">
       <value value="false"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="social-entrepeneurs">
-      <value value="0.1"/>
-      <value value="0.2"/>
-      <value value="0.3"/>
-      <value value="0.4"/>
-      <value value="0.5"/>
-    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.3"/>
   </experiment>
-  <experiment name="experimentNDCC" repetitions="100" runMetricsEveryStep="false">
+  <experiment name="experimentNDCC" repetitions="5" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <exitCondition>report-sim-ended</exitCondition>
@@ -2135,19 +2235,23 @@ NetLogo 6.4.0
       <value value="0.9"/>
     </enumeratedValueSet>
   </experiment>
-  <experiment name="experimentTH_D1_840" repetitions="100" runMetricsEveryStep="false">
+  <experiment name="experimentTH_D1_840_4" repetitions="1" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <exitCondition>report-sim-ended</exitCondition>
-    <metric>mean [nw:closeness-centrality] of people</metric>
-    <metric>mean [nw:eigenvector-centrality] of people</metric>
-    <metric>mean [nw:betweenness-centrality] of people</metric>
-    <metric>mean [nw:page-rank] of people</metric>
-    <metric>nw:mean-path-length</metric>
-    <metric>variance [nw:closeness-centrality] of people</metric>
-    <metric>variance [nw:eigenvector-centrality] of people</metric>
-    <metric>variance [nw:betweenness-centrality] of people</metric>
-    <metric>variance [nw:page-rank] of people</metric>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
     <metric>majority-green?</metric>
     <metric>green-percentage</metric>
     <metric>tick-ended</metric>
@@ -2158,25 +2262,30 @@ NetLogo 6.4.0
       <value value="1"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="average-node-degree">
-      <value value="3"/>
-      <value value="5"/>
+      <value value="4"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="module">
       <value value="&quot;threshold-model&quot;"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="tipping-strategy">
-      <value value="&quot;Shotgun-NS&quot;"/>
+    <enumeratedValueSet variable="seeding-strategy">
       <value value="&quot;Shotgun&quot;"/>
-      <value value="&quot;Snowball&quot;"/>
       <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;S_Closeness&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="n-communities">
-      <value value="6"/>
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
       <value value="0.05"/>
-      <value value="0.25"/>
-      <value value="0.45"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="N">
       <value value="100"/>
@@ -2196,34 +2305,35 @@ NetLogo 6.4.0
     <enumeratedValueSet variable="layout">
       <value value="&quot;spring&quot;"/>
     </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
     <enumeratedValueSet variable="layout-network?">
       <value value="false"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="duration-to-decision">
-      <value value="0"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="clustering-coefficient">
-      <value value="2"/>
-    </enumeratedValueSet>
-    <steppedValueSet variable="social-entrepeneurs" first="0.1" step="0.025" last="0.3"/>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.4"/>
     <steppedValueSet variable="threshold-pop" first="0.25" step="0.05" last="0.75"/>
   </experiment>
-  <experiment name="experimentTH_D3_840" repetitions="100" runMetricsEveryStep="false">
+  <experiment name="experimentTH_D3_840_025" repetitions="1" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <exitCondition>report-sim-ended</exitCondition>
-    <metric>mean [nw:closeness-centrality] of people</metric>
-    <metric>mean [nw:eigenvector-centrality] of people</metric>
-    <metric>mean [nw:betweenness-centrality] of people</metric>
-    <metric>mean [nw:page-rank] of people</metric>
-    <metric>network-assertiveness</metric>
-    <metric>nw:mean-weighted-path-length connection-weight</metric>
-    <metric>nw:modularity (list people)</metric>
-    <metric>nw:mean-path-length</metric>
-    <metric>variance [nw:closeness-centrality] of people</metric>
-    <metric>variance [nw:eigenvector-centrality] of people</metric>
-    <metric>variance [nw:betweenness-centrality] of people</metric>
-    <metric>variance [nw:page-rank] of people</metric>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
     <metric>majority-green?</metric>
     <metric>green-percentage</metric>
     <metric>tick-ended</metric>
@@ -2234,25 +2344,32 @@ NetLogo 6.4.0
       <value value="3"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="average-node-degree">
-      <value value="3"/>
-      <value value="5"/>
+      <value value="4"/>
+      <value value="7"/>
+      <value value="10"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="module">
       <value value="&quot;threshold-model&quot;"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="tipping-strategy">
-      <value value="&quot;Shotgun-NS&quot;"/>
+    <enumeratedValueSet variable="seeding-strategy">
       <value value="&quot;Shotgun&quot;"/>
-      <value value="&quot;Snowball&quot;"/>
       <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;S_Closeness&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="n-communities">
-      <value value="6"/>
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
       <value value="0.05"/>
-      <value value="0.25"/>
-      <value value="0.45"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="N">
       <value value="100"/>
@@ -2272,34 +2389,37 @@ NetLogo 6.4.0
     <enumeratedValueSet variable="layout">
       <value value="&quot;spring&quot;"/>
     </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
     <enumeratedValueSet variable="layout-network?">
       <value value="false"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="duration-to-decision">
-      <value value="0"/>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.3"/>
+    <enumeratedValueSet variable="threshold-pop">
+      <value value="0.25"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="clustering-coefficient">
-      <value value="2"/>
-    </enumeratedValueSet>
-    <steppedValueSet variable="social-entrepeneurs" first="0.1" step="0.025" last="0.3"/>
-    <steppedValueSet variable="threshold-pop" first="0.25" step="0.05" last="0.75"/>
   </experiment>
-  <experiment name="experimentTH_D5_840" repetitions="100" runMetricsEveryStep="false">
+  <experiment name="experimentTH_D5_840" repetitions="1" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <exitCondition>report-sim-ended</exitCondition>
-    <metric>mean [nw:closeness-centrality] of people</metric>
-    <metric>mean [nw:eigenvector-centrality] of people</metric>
-    <metric>mean [nw:betweenness-centrality] of people</metric>
-    <metric>mean [nw:page-rank] of people</metric>
-    <metric>network-assertiveness</metric>
-    <metric>nw:mean-weighted-path-length connection-weight</metric>
-    <metric>nw:modularity (list people)</metric>
-    <metric>nw:mean-path-length</metric>
-    <metric>variance [nw:closeness-centrality] of people</metric>
-    <metric>variance [nw:eigenvector-centrality] of people</metric>
-    <metric>variance [nw:betweenness-centrality] of people</metric>
-    <metric>variance [nw:page-rank] of people</metric>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
     <metric>majority-green?</metric>
     <metric>green-percentage</metric>
     <metric>tick-ended</metric>
@@ -2307,104 +2427,32 @@ NetLogo 6.4.0
       <value value="2"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="dekkers-power">
-      <value value="5"/>
+      <value value="1"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="average-node-degree">
-      <value value="3"/>
-      <value value="5"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="module">
-      <value value="&quot;threshold-model&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="tipping-strategy">
-      <value value="&quot;Shotgun-NS&quot;"/>
-      <value value="&quot;Shotgun&quot;"/>
-      <value value="&quot;Snowball&quot;"/>
-      <value value="&quot;Silver-Bullets&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="n-communities">
-      <value value="6"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="rewiring-proportion">
-      <value value="0.05"/>
-      <value value="0.25"/>
-      <value value="0.45"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="N">
-      <value value="100"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="k1">
-      <value value="1.0E-6"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="Population-Size">
-      <value value="840"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="k2">
-      <value value="1.1E-6"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="static-seed?">
-      <value value="false"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="layout">
-      <value value="&quot;spring&quot;"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="layout-network?">
-      <value value="false"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="duration-to-decision">
-      <value value="0"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="clustering-coefficient">
-      <value value="2"/>
-    </enumeratedValueSet>
-    <steppedValueSet variable="social-entrepeneurs" first="0.1" step="0.025" last="0.3"/>
-    <steppedValueSet variable="threshold-pop" first="0.25" step="0.05" last="0.75"/>
-  </experiment>
-  <experiment name="experimentTH_D7_840" repetitions="100" runMetricsEveryStep="false">
-    <setup>setup</setup>
-    <go>go</go>
-    <exitCondition>report-sim-ended</exitCondition>
-    <metric>mean [nw:closeness-centrality] of people</metric>
-    <metric>mean [nw:eigenvector-centrality] of people</metric>
-    <metric>mean [nw:betweenness-centrality] of people</metric>
-    <metric>mean [nw:page-rank] of people</metric>
-    <metric>network-assertiveness</metric>
-    <metric>nw:mean-weighted-path-length connection-weight</metric>
-    <metric>nw:modularity (list people)</metric>
-    <metric>nw:mean-path-length</metric>
-    <metric>variance [nw:closeness-centrality] of people</metric>
-    <metric>variance [nw:eigenvector-centrality] of people</metric>
-    <metric>variance [nw:betweenness-centrality] of people</metric>
-    <metric>variance [nw:page-rank] of people</metric>
-    <metric>majority-green?</metric>
-    <metric>green-percentage</metric>
-    <metric>tick-ended</metric>
-    <enumeratedValueSet variable="seed">
-      <value value="2"/>
-    </enumeratedValueSet>
-    <enumeratedValueSet variable="dekkers-power">
       <value value="7"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="average-node-degree">
-      <value value="3"/>
-      <value value="5"/>
-    </enumeratedValueSet>
     <enumeratedValueSet variable="module">
       <value value="&quot;threshold-model&quot;"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="tipping-strategy">
-      <value value="&quot;Shotgun-NS&quot;"/>
+    <enumeratedValueSet variable="seeding-strategy">
       <value value="&quot;Shotgun&quot;"/>
-      <value value="&quot;Snowball&quot;"/>
       <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="n-communities">
-      <value value="6"/>
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
       <value value="0.05"/>
-      <value value="0.25"/>
-      <value value="0.45"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="N">
       <value value="100"/>
@@ -2424,16 +2472,100 @@ NetLogo 6.4.0
     <enumeratedValueSet variable="layout">
       <value value="&quot;spring&quot;"/>
     </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
     <enumeratedValueSet variable="layout-network?">
       <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.4"/>
+    <steppedValueSet variable="threshold-pop" first="0.25" step="0.05" last="0.75"/>
+  </experiment>
+  <experiment name="experimentTH_D7_840" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>majority-green?</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="4"/>
+      <value value="7"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;threshold-model&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;S_Closeness&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="duration-to-decision">
       <value value="0"/>
     </enumeratedValueSet>
-    <enumeratedValueSet variable="clustering-coefficient">
-      <value value="2"/>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
     </enumeratedValueSet>
-    <steppedValueSet variable="social-entrepeneurs" first="0.1" step="0.025" last="0.3"/>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.4"/>
     <steppedValueSet variable="threshold-pop" first="0.25" step="0.05" last="0.75"/>
   </experiment>
   <experiment name="Network_Metrics" repetitions="1" runMetricsEveryStep="false">
@@ -2445,12 +2577,15 @@ NetLogo 6.4.0
     <metric>mean [nw:eigenvector-centrality] of people</metric>
     <metric>mean [nw:betweenness-centrality] of people</metric>
     <metric>mean [nw:weighted-closeness-centrality connection-weight] of people</metric>
+    <metric>mean [ nw:clustering-coefficient ] of people</metric>
+    <metric>MCRPL</metric>
     <metric>MCPL</metric>
     <metric>MPL</metric>
     <metric>variance [nw:closeness-centrality] of people</metric>
     <metric>variance [nw:eigenvector-centrality] of people</metric>
     <metric>variance [nw:betweenness-centrality] of people</metric>
     <metric>variance [nw:weighted-closeness-centrality connection-weight] of people</metric>
+    <metric>variance [ nw:clustering-coefficient ] of people</metric>
     <metric>majority-green?</metric>
     <metric>green-percentage</metric>
     <metric>tick-ended</metric>
@@ -2459,19 +2594,17 @@ NetLogo 6.4.0
     </enumeratedValueSet>
     <enumeratedValueSet variable="dekkers-power">
       <value value="1"/>
-      <value value="2"/>
       <value value="3"/>
-      <value value="4"/>
       <value value="5"/>
-      <value value="6"/>
       <value value="7"/>
+      <value value="10"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="average-node-degree">
       <value value="3"/>
-      <value value="4"/>
       <value value="5"/>
-      <value value="6"/>
       <value value="7"/>
+      <value value="10"/>
+      <value value="20"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="module">
       <value value="&quot;threshold-model&quot;"/>
@@ -2480,19 +2613,16 @@ NetLogo 6.4.0
       <value value="&quot;Silver-Bullets&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="n-communities">
-      <value value="1"/>
-      <value value="2"/>
-      <value value="3"/>
-      <value value="4"/>
       <value value="5"/>
-      <value value="6"/>
+      <value value="7"/>
+      <value value="10"/>
+      <value value="20"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="rewiring-proportion">
       <value value="0.01"/>
       <value value="0.02"/>
       <value value="0.03"/>
-      <value value="0"/>
-      <value value="4"/>
+      <value value="0.04"/>
       <value value="0.05"/>
       <value value="0.1"/>
       <value value="0.15"/>
@@ -2512,7 +2642,7 @@ NetLogo 6.4.0
       <value value="1.1E-6"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="static-seed?">
-      <value value="false"/>
+      <value value="true"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="layout">
       <value value="&quot;spring&quot;"/>
@@ -2540,6 +2670,1709 @@ NetLogo 6.4.0
     </enumeratedValueSet>
     <enumeratedValueSet variable="threshold-pop">
       <value value="0.75"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experimentST" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>majority-green?</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="4"/>
+      <value value="7"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;stochastic&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.3"/>
+  </experiment>
+  <experiment name="experiment7DR" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>majority-green?</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="4"/>
+      <value value="7"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;stochastic&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;S_Closeness&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.3"/>
+  </experiment>
+  <experiment name="experiment10DR" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>majority-green?</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;stochastic&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="tipping-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;S_Closeness&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="20"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.25"/>
+      <value value="0.45"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="2"/>
+      <value value="6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-entrepeneurs" first="0.1" step="0.05" last="0.4"/>
+  </experiment>
+  <experiment name="experiment_1_run" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>majority-green?</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;stochastic&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="tipping-strategy">
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="social-entrepeneurs">
+      <value value="0.25"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment_1330_runs" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>majority-green?</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="4"/>
+      <value value="7"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;stochastic&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="tipping-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;S_Closeness&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-entrepeneurs" first="0.1" step="0.1" last="0.3"/>
+  </experiment>
+  <experiment name="experiment_64_run" repetitions="64" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>majority-green?</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="3"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;stochastic&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="tipping-strategy">
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1.5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="social-entrepeneurs">
+      <value value="0.25"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experiment5DR" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>majority-green?</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="4"/>
+      <value value="7"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;stochastic&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;S_Closeness&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.3"/>
+  </experiment>
+  <experiment name="experimentTH_D1_840_7_1" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>majority-green?</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;threshold-model&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;S_Closeness&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.4"/>
+    <steppedValueSet variable="threshold-pop" first="0.25" step="0.05" last="0.75"/>
+  </experiment>
+  <experiment name="experimentTH_D1_840_10" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>majority-green?</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;threshold-model&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;S_Closeness&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.4"/>
+    <steppedValueSet variable="threshold-pop" first="0.25" step="0.05" last="0.75"/>
+  </experiment>
+  <experiment name="experimentTH_1" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;threshold-model&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.4"/>
+    <steppedValueSet variable="threshold-pop" first="0.25" step="0.1" last="0.55"/>
+  </experiment>
+  <experiment name="experimentTH_D1_840_7_10" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>majority-green?</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;threshold-model&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;S_Closeness&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.4"/>
+    <steppedValueSet variable="threshold-pop" first="0.25" step="0.05" last="0.75"/>
+  </experiment>
+  <experiment name="experiment5DRn" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCe</metric>
+    <metric>MEC</metric>
+    <metric>MBC</metric>
+    <metric>MCCe</metric>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCe</metric>
+    <metric>VEC</metric>
+    <metric>VBC</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>majority-green?</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="seed">
+      <value value="2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="5"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="4"/>
+      <value value="7"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;stochastic&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;S_Closeness&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.3"/>
+  </experiment>
+  <experiment name="experimentTH_030" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+      <value value="3"/>
+      <value value="5"/>
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;threshold-model&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.3"/>
+    <enumeratedValueSet variable="threshold-pop">
+      <value value="0.3"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experimentTH_040" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+      <value value="3"/>
+      <value value="5"/>
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;threshold-model&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.3"/>
+    <enumeratedValueSet variable="threshold-pop">
+      <value value="0.4"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experimentTH_050_NO" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="network-generator">
+      <value value="&quot;custom&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+      <value value="3"/>
+      <value value="5"/>
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;threshold-model&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.3"/>
+    <enumeratedValueSet variable="threshold-pop">
+      <value value="0.5"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experimentTH_060" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+      <value value="3"/>
+      <value value="5"/>
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;threshold-model&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.3"/>
+    <enumeratedValueSet variable="threshold-pop">
+      <value value="0.6"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experimentTH_070" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+      <value value="3"/>
+      <value value="5"/>
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;threshold-model&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <steppedValueSet variable="social-innovators" first="0.1" step="0.1" last="0.3"/>
+    <enumeratedValueSet variable="threshold-pop">
+      <value value="0.7"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experimentKL_6" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="network-generator">
+      <value value="&quot;Kleinberg&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;threshold-model&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Silver-Bullets&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.2"/>
+      <value value="1.4"/>
+      <value value="1.6"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+      <value value="2.4"/>
+      <value value="2.6"/>
+      <value value="3"/>
+      <value value="4"/>
+      <value value="5"/>
+      <value value="6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="social-innovators">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="threshold-pop">
+      <value value="0.3"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experimentCU_6" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="network-generator">
+      <value value="&quot;custom&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+      <value value="3"/>
+      <value value="5"/>
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;threshold-model&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Silver-Bullets&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="3"/>
+      <value value="4"/>
+      <value value="5"/>
+      <value value="6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="social-innovators">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="threshold-pop">
+      <value value="0.3"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experimentWS_6" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="network-generator">
+      <value value="&quot;Small-World&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;threshold-model&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.02"/>
+      <value value="0.03"/>
+      <value value="0.04"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.15"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="social-innovators">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="threshold-pop">
+      <value value="0.3"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experimentPA_6" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <enumeratedValueSet variable="network-generator">
+      <value value="&quot;Scale-Free&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;threshold-model&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Silver-Bullets&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="16"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="social-innovators">
+      <value value="0.1"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="threshold-pop">
+      <value value="0.3"/>
+    </enumeratedValueSet>
+  </experiment>
+  <experiment name="experimentTH_050_NO_IN" repetitions="1" runMetricsEveryStep="false">
+    <setup>setup</setup>
+    <go>go</go>
+    <exitCondition>report-sim-ended</exitCondition>
+    <metric>MSCl</metric>
+    <metric>gcc</metric>
+    <metric>MCRPL</metric>
+    <metric>MPL</metric>
+    <metric>VCCo</metric>
+    <metric>VD</metric>
+    <metric>green-percentage</metric>
+    <metric>tick-ended</metric>
+    <metric>ratio-influencers-innovators</metric>
+    <enumeratedValueSet variable="network-generator">
+      <value value="&quot;custom&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="dekkers-power">
+      <value value="1"/>
+      <value value="3"/>
+      <value value="5"/>
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="average-node-degree">
+      <value value="7"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="module">
+      <value value="&quot;threshold-model&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="seeding-strategy">
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="n-communities">
+      <value value="1"/>
+      <value value="5"/>
+      <value value="10"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="rewiring-proportion">
+      <value value="0.01"/>
+      <value value="0.05"/>
+      <value value="0.1"/>
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="duration-to-decision">
+      <value value="0"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="N">
+      <value value="100"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k1">
+      <value value="1.0E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="Population-Size">
+      <value value="840"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="k2">
+      <value value="1.1E-6"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="static-seed?">
+      <value value="true"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout">
+      <value value="&quot;spring&quot;"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="clustering-coefficient">
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="layout-network?">
+      <value value="false"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="social-innovators">
+      <value value="0.2"/>
+    </enumeratedValueSet>
+    <enumeratedValueSet variable="threshold-pop">
+      <value value="0.5"/>
     </enumeratedValueSet>
   </experiment>
 </experiments>
