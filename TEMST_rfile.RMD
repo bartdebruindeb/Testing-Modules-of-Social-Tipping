@@ -142,7 +142,7 @@ if (length(variable_names) == length(new_variable_names)) {
 #df1 <- subset( df1, select = -dekkers.power.1 )
 #df3 <- dplyr::bind_rows(df1, df2)
 #write.csv(clean_df,"C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/Probalistic/Probs_clean.csv" )
-#write.csv(df_mean,"C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/Probalistic/Probs_mean_clean.csv" )
+write.csv(df_mean,"C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/Probalistic/Probs_mean_clean.csv",row.names = FALSE )
 #clean_df<- filter(clean_df, clean_df$Tipping_Strategy != "S_Closeness")
 #clean_df<- clean_df %>% mutate(across(c('Green_Percentage'), round,0))
 #df_mean <-  clean_df %>%
@@ -154,16 +154,15 @@ if (length(variable_names) == length(new_variable_names)) {
 
 # REMOVE IRRELEVANT VARIABLES ---------------------------------------------------------------
 
-df <- read.csv("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/Probalistic/Probs_clean.csv", header = TRUE)
+#df <- read.csv("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/Probalistic/Probs_clean.csv", header = TRUE)
 df_mean <- read.csv("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/Probalistic/Probs_mean_clean.csv", header = TRUE)
 
-df <- df[-c(1)]
-df_mean <-  df_mean[-c(1)]
-
+df_mean <- df_mean[,-c(1)]
+#df_mean <-  subset(df_mean, select= -c(Run_Number))
 #printColumnNames(df)
   ### MANUAL INPUT: specify new (easy-to-work-with) variable names ###
   new_variable_names <- list(
-   "Run_Number",
+ #  "Run_Number",
     "Dekkers_Power",
     "Node_Degree",
      "Tipping_Strategy",
@@ -189,15 +188,28 @@ df_mean <-  df_mean[-c(1)]
    "VD",
 #    "Majority_Green",
    "Green_Percentage",
-    "Sim_Time"
+    "Sim_Time",
+"IO_Ratio_N"
+
     )
 
-#change variable names
-#clean_df <- changeColumnNames(df, new_variable_names)
-#new_variable_names <- append(new_variable_names, "IO_Ratio_N")
-#df_mean <- changeColumnNames(df_mean, new_variable_names)
+variable_names <- names(df_mean)
+if (length(variable_names) == length(new_variable_names)) {
+  clean_df <- changeColumnNames(df_mean, new_variable_names)
+} else {
+  print (length(variable_names))
+  print (length(new_variable_names))
+  print("ERROR: the number of variable names you specified is not the same as the number of variables present within the dataframe; please check again")
+}
 
-clean_df <- df
+df_mean <- df_mean[order(df_mean$Dekkers_Power,df_mean$Communities,df_mean$Rewiring_Proportion,df_mean$Clustering_Exponent,df_mean$Tipping_Strategy),]
+
+df1 <- filter(df_mean, df_mean$Node_Degree == 7, df_mean$Innovators == 0.1)
+df2 <- read.csv("C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/Probalistic/mydata.csv")
+df2 <- df2[,-c(1)]
+df2 <- df2[order(df2$Dekkers_Power,df2$Communities,df2$Rewiring_Proportion,df2$Clustering_Exponent,df2$Tipping_Strategy),]
+
+
 ```
 
 ```{r include=FALSE}
@@ -290,7 +302,7 @@ out_p2_names <- list("Mean_Shortest_Path_Length", "Mean_Complex_Path_Length", "M
 
 compute_plot_nw <- function(k,i,l,j) {
 df_use <- filter(clean_df,clean_df$Node_Degree == k)
-df_use_mean <- filter(df_mean, df_mean$Node_Degree == k)
+df_use_mean <- filter(df_mean, df_mean$Node_Degree == k , Innovators == 0.2)
 p <-as.name(l)
 g_plot <- ggplot() +
     #geom_histogram(binwidth=0.01)+
@@ -309,7 +321,7 @@ g_plot <- ggplot() +
           plot.title = element_text( size = 18), 
           plot.subtitle = element_text( size = 15),
           axis.title = element_text( size = 18) ) +
-   facet_grid(~Innovators, labeller = label_both )
+   facet_grid(Dekkers_Power~Innovators, labeller = label_both )
 # ggnewscale::new_scale_color() +
 #  geom_point(data=df_use_mean, aes(x = MPL, y = MSCl, color = Majority_Green), size = 2) +
  #  scale_color_brewer(,,palette = "Blues")

@@ -1,37 +1,40 @@
 extensions[nw stats]
 
 globals [
-  people-per-community
-  stop-time
-  lsp
-  rewired
-  Max-Green
-  Tipped?
-  majority-green?
-  surface-area-green
-  cum-surface-area-green
-  norm-csag
-  norm-csab
+
+  ;; Setup
+  people-per-community               ;; Model parameter for calculating number of people per community
+  rewired                            ;; Counter to count the number of rewired connections reached to max number of connections.
+  influencers                        ;; Node(s) with highest node degree
+  ratio-influencers-being-innovators ;; Ratio of influencers who are also innovators
+
+  ;; Some metrics for defining when simulations ends
   sim-ended?
-  tick-ended
-  gcc
-  MPL
-  MCRPL
   count-people-updated-this-tick
-  green-percentage
-  max-cc-weight
-  MSCe
-  MSCl
-  MCCe
-  VCCe
-  VEC
-  VBC
-  VCCo
-  VD
-  MEC
-  MBC
-  ratio-influencers-innovators
-  influencers
+
+  ;; Network Metrics
+  GCC                                ;; Global Clustering Coefficient
+  MPL                                ;; Mean Path Length
+  MCRPL                              ;; Mean Complex Path Length
+  MSCe                               ;; Mean Simple Centrality
+  MSCl                               ;; Mean Local Clustering Coefficient
+  MCCe                               ;; Mean Complex Centrality
+  VCCe                               ;; Variance Complex Centrality
+  VEC                                ;; Variance Eigenvector Centrality
+  VBC                                ;; Variance Betweenness Centrality
+  VCCo                               ;; Variancd Local Clustering coefficient
+  VD                                 ;; Variance Node Degree
+  MEC                                ;; Mean Eigenvector Centrality
+  MBC                                ;; Mean Betweenness Centrlaity
+
+  ;;Output Variables
+  green-percentage                   ;; Percentage of adopted agents
+  tick-ended                         ;; Simulation time
+  peer-count-list                    ;; List with the node degree of eac agent
+  clus-coef-list                     ;; List with Local Cluster Coefficient of each Agent
+  social-innovator-list              ;; List with identity of Innovators
+  edge-from-list                     ;; List with for each edge one end
+  edge-to-list                       ;; List with for each edge the other end
 
 ]
 
@@ -44,35 +47,24 @@ connections-own [
   first-side?
 ]
 people-own [
-  peers
-  my-behavior
-  my-behavior-t-1
-  ticks-to-new-decision
-  my-community
-  social-innovator?
-  number-of-peers
-  my-threshold
-  Simple-Centrality
-  Complex-Centrality
-  Clus_Coefficient
+  peers                               ;; agentset of connected agents
+  number-of-peers                     ;; number of connected agents
+  my-behavior                         ;; current behavior (0 or 1)
+  my-behavior-t-1                     ;; behavior at previous tick (0 or 1)
+  my-community                        ;; Community the person belongs to
+  social-innovator?                   ;; Attribute that tells whether agent is an innovator or not
+  my-threshold                        ;; Threshold value
+  Simple-Centrality                   ;; Simple Centrality (see complex-path-weight procedure)
+  Complex-Centrality                  ;; Complex Centrality (see complex-path-weight procedure)
+  Clus_Coefficient                    ;;
 
 ]
 
-;to profile
- ; profiler:reset                                       ;; set up the model
- ; profiler:start                                 ;; start profiling
- ; setup                               ;; run something you want to measure
- ; while [report-sim-ended = false] [go]
- ; profiler:stop
- ; print profiler:report          ;; stop profiling
-  ;csv:to-file "profiler_data.csv" profiler:data  ;; save the results
-                                 ;; clear the data;
-;end
 
 to setup
   clear-all
   reset-ticks
-  if static-seed? [random-seed new-seed ] ;determine-seed]
+  if static-seed? [random-seed new-seed ]
   setup-people
   complex-path-weight
   setup-social-innovators
@@ -83,15 +75,6 @@ to setup
 
 end
 
-to-report determine-seed
-  let dekkers-power-settings (list 1 3 5 7)
-  let n-communities-settings (list 1 5 10)
-  let rewiring-proportion-settings (list 0.01 0.05 0.1 0.2)
-  let clustering-coefficient-settings (list 1 1.4 1.8 2.2)
-  let reporter 1 + position dekkers-power dekkers-power-settings * 1 + position n-communities n-communities-settings * 4 + position rewiring-proportion rewiring-proportion-settings * 12 + position clustering-coefficient clustering-coefficient-settings * 64
-
-  report reporter
-end
 
 to create-person
   set my-threshold threshold-pop ;normalize-data-in-range threshold-pop 0.15 0 1
@@ -130,9 +113,6 @@ to setup-people
     stop
   ]
 
-
-
-
   set people-per-community population-size / n-communities
   if average-node-degree > people-per-community [error "average-node-degree is bigger than the people-per-community"]
 
@@ -150,30 +130,7 @@ to setup-people
     layout-network]
 end
 
-
-to set-default-settings
- ; set dekkers-power 4.5
-  ;set seed 2
- ; set average-node-degree 4
-  set module "stochastic"
-  set seeding-strategy "Shotgun"
-  set n-communities 4
-  set rewiring-proportion 0.15
-  set clustering-coefficient 2
-;  set k1 0.000001
-  set static-seed? false
- ; set k2 0.0000011
- ; set layout "spring"
- ; set social-innovators 0.10
-  set sim-ended? false
- ; ask patch 37 43 [ output-print ticks]
-
-end
-
 to setup-network
-
-
-
 
   ; The social network is determined by the number of communities, number of members per community, clustering component, rewiring-proportion, dekkers-power.
   ; The network consists of n-communities. Firstly (Step 1) the agent with the highest label (max-who-community) of community n is connected with the agents with the median label of community n + 1.
@@ -182,6 +139,8 @@ to setup-network
   ; proportonial to 1/distance(i,j)^q. Where distance d between agent i and j d = abs(who-i - who-j) for d < people-per-community / 2 and d = people-per-community - abs(who-i - who-j) for d > people-per-community / 2.
   ; Where q is the clustering component. For high values of q, agents make connections with more closely labeled nodes.
   ; Lastly the connections are rewired with random agents irrespectively of their community using the rewiring-proportion and dekkers-power. (See rewire procedure).
+  ; The setup network procedure is within a loop (while) cause in case the generated network isn't a connected network (not a path to every single agent when
+  ; lwcc > 1 there is more than one seperate network), the procedure is started over.
 
   let lwcc 2
   while [lwcc > 1] [
@@ -221,10 +180,12 @@ to rewire
           let nn1 one-of isolated-nodes
             create-connection-to nn1
             create-connection-from nn1
+            ask connection who [who] of nn1 [set first-side? true]
           ][
           let nn2 new-rewired-node NodeB
             create-connection-to nn2
             create-connection-from nn2
+            ask connection who [who] of nn2 [set first-side? true]
           ]
         ]
         set rewired rewired + 1
@@ -281,29 +242,7 @@ to setup-communities-connections
 
   let max-iterations average-node-degree * population-size / 2
   let iterations-for-network-formation 0
-  ; Step 1 Connect different communities with one another with by connecting the highest who of one community with the middle who of the other community.
-;  if n-communities > 1 [
-;    let index 1
-;    let new-neighbor 0
-;    repeat n-communities [
-;      let max-who-community max [who] of people with [my-community = index]
-;      ask person max-who-community [
-;        ifelse who = max [who] of people [
-;          set new-neighbor min [who] of people + ceiling (people-per-community / 2)
-;        ][
-;          set new-neighbor who + ceiling (people-per-community / 2) ]
-;        create-connection-from person new-neighbor
-;        create-connection-to person new-neighbor
-;        ask connection who [who] of person new-neighbor [
-;          set community-bridge? true]
-;           ask connection [who] of person new-neighbor who [
-;          set community-bridge? true]
-;        set iterations-for-network-formation iterations-for-network-formation + 1
- ;     ]
- ;     set index index + 1
- ;   ]
- ; ]
-  ;Step 2 Continue adding connections until the max connections is reached.
+
   while [max-iterations > iterations-for-network-formation] [
     ask min-one-of people [count connection-neighbors] [
       let community-list sort [who] of other people with [my-community = [my-community] of myself and not connection-neighbor? myself]
@@ -332,75 +271,23 @@ to setup-communities-connections
 
 end
 
-to complex-path-weight
-  ask connections [
-   ; print [who] of end1
-   ; print [who] of end2
-    let N1 ([connection-neighbors] of end1) who-are-not end2
-    let N2 ([connection-neighbors] of end2) who-are-not end1
-    let Oij count N1 - count N1 who-are-not N2
-   ; print [who] of N1
-   ; print [who] of N2
-   ; print Oij
-    let Dij N2 who-are-not N1
-    ;  print [who] of connection-neighbors
-    let Rij count Dij with [count connection-neighbors - count connection-neighbors who-are-not N1 > 0]
-
-   ; print Dij
-    set complex-connection-weight 1 + Rij + Oij
-    set complex-connection-weight 1 / complex-connection-weight]
-
-  ask people [
-    set Complex-Centrality nw:weighted-closeness-centrality complex-connection-weight
-    set Simple-Centrality nw:closeness-centrality
-  ]
-end
+to setup-social-innovators ;;; Assigns which agents are the social innovators (green) at the start of the simulation. Based on Centola (2018) you choose between Shotgun (assigning the
+ ; the social-innovators randomly), Snowball (one random-agent and it's connected peers), Silver-Bullets (Select the agents with heighest node-degree).
 
 
-
-
-to setup-social-innovators ;;; Assigns which agents are the social entrepreneurs (green) at the start of the simulation. Based on Centola (2018) you choose between Shotgun (assinging the
- ; the social-innovators randomly), Snowball (one random-agent and it's connected peers), Silver-Bullets (Select the agents with heighest node-degree). An additonal scenario has been
- ; added to instead of selecting the silver bullets (high degree nodes) the Outskirts (the low degree nodes).
-
-
-  let n-social-entrepreneurs ceiling (social-innovators * population-size)
-
-
-  if seeding-strategy = "Shotgun-NS" [
-    ask n-of n-social-entrepreneurs  people with [count my-connections != max [count my-connections] of people] [
-      setup-as-social-innovator]]
+  let n-social-innovators ceiling (social-innovators * population-size)
 
    if seeding-strategy = "Shotgun" [
-    ask n-of n-social-entrepreneurs  people [
+    ask n-of n-social-innovators  people [
       setup-as-social-innovator]]
 
     if seeding-strategy = "Silver-Bullets" [
-      ask max-n-of n-social-entrepreneurs people [count my-connections] [
+      ask max-n-of n-social-innovators people [count my-connections] [
       setup-as-social-innovator]]
-
-
-  if seeding-strategy = "S_Closeness" [
-    ; Ensure that agents that are connected to one another are also spatially closely located to another.
-    let index n-social-entrepreneurs
-    let k max-one-of people [Simple-Centrality]
-      ask k [
-        setup-as-social-innovator
-        ask up-to-n-of index connection-neighbors [
-          setup-as-social-innovator
-        ]
-        set index floor (social-innovators * population-size) - count people with [social-innovator? = true]
-        while [index > 0] [
-          ask max-one-of people with [social-innovator? != true] [(count connection-neighbors - (count connection-neighbors who-are-not  people with [social-innovator? = true])) / count connection-neighbors ] [
-            setup-as-social-innovator]
-            set index index - 1
-          ]
-    ]
-  ]
 
    if seeding-strategy = "CR_Closeness" [
     ; Ensure that agents that are connected to one another are also spatially closely located to another.
-    let index n-social-entrepreneurs
+    let index n-social-innovators
     let k max-one-of people [Complex-Centrality]
       ask k [
         setup-as-social-innovator
@@ -426,20 +313,54 @@ to setup-as-social-innovator
   set social-innovator? true
 end
 
+to complex-path-weight
+  ask connections [
+   ; print [who] of end1
+   ; print [who] of end2
+    let N1 ([connection-neighbors] of end1) who-are-not end2
+    let N2 ([connection-neighbors] of end2) who-are-not end1
+    let Oij count N1 - count N1 who-are-not N2
+   ; print [who] of N1
+   ; print [who] of N2
+   ; print Oij
+    let Dij N2 who-are-not N1
+    ;  print [who] of connection-neighbors
+    let Rij count Dij with [count connection-neighbors - count connection-neighbors who-are-not N1 > 0]
+
+   ; print Dij
+    set complex-connection-weight 1 + Rij + Oij
+    set complex-connection-weight 1 / complex-connection-weight]
+
+  ask people [
+    set Complex-Centrality nw:weighted-closeness-centrality complex-connection-weight
+    set Simple-Centrality nw:closeness-centrality
+  ]
+end
+
+
 to setup-metrics
+  set peer-count-list (list)
+  set clus-coef-list (list)
+  set social-innovator-list (list)
+  set edge-from-list (list)
+  set edge-to-list (list)
   ask people [
     set peers connection-neighbors
-    set number-of-peers count connection-neighbors
- ;   set Complex-Centrality nw:weighted-closeness-centrality connection-reinforcing-weight
- ;   set Simple-Centrality nw:closeness-centrality
+    set number-of-peers count my-out-connections
+    set peer-count-list lput number-of-peers peer-count-list
     set Clus_Coefficient nw:clustering-coefficient
+    set clus-coef-list lput Clus_Coefficient clus-coef-list
+    if social-innovator? = true [
+      set social-innovator-list lput who social-innovator-list
+    ]
+  ]
+
+  ask connections with [first-side? = true] [
+    set edge-from-list lput [who] of end1 edge-from-list
+    set edge-to-list lput [who] of end2 edge-to-list
   ]
   set influencers people with-max [number-of-peers]
-  set ratio-influencers-innovators count influencers with [social-innovator? = true] / count influencers
-  set tipped? false
- ; set cum-surface-area-green calc-surface-area-green
- ; set norm-csag cum-surface-area-green
- ; set norm-csab 1 - norm-csag
+  set ratio-influencers-being-innovators count influencers with [social-innovator? = true] / count influencers
   set sim-ended? false
   set tick-ended 0
   log-network-metrics
@@ -463,14 +384,12 @@ to log-network-metrics
  ; set MBC mean [nw:betweenness-centrality] of people
 end
 
-to-report calc-surface-area-green
-  report count people with [my-behavior = 1] / count people
-
-end
-
+;---------------------------------------------------------------------------
+;; For visuals
+;---------------------------------------------------------------------------
 to layout-network
   ask patches [set pcolor white]
-   ask patch 37 43 [set plabel ticks set plabel-color black]
+  ;ask patch 37 43 [set plabel ticks set plabel-color black]
   if layout = "radial" and count turtles > 1 [
     let root-agent max-one-of turtles [ nw:closeness-centrality ]
     layout-radial turtles links root-agent
@@ -490,14 +409,7 @@ to layout-network
   display
 end
 
-to-report network-assertiveness
-  let giant-nodes max-n-of 20 people [count connection-neighbors]
-  let number-of-giant-friends 0
-  ask giant-nodes [
-    set number-of-giant-friends count giant-nodes with [member? myself connection-neighbors]
-  ]
-  report mean [number-of-giant-friends] of giant-nodes
-end
+
 
 to go
   consider-adopting-new-behavior
@@ -545,8 +457,6 @@ to update-metrics
   let g count people with [my-behavior = 1]
   let b count people with [my-behavior =  0]
 
-
-
   if count-people-updated-this-tick = 0 and module = "threshold-model" [
     set sim-ended? true
     set tick-ended ticks - 1
@@ -569,10 +479,11 @@ to-report report-sim-ended
 end
 
 
-;;; Reporters for Social Network Analysis
 
 
-
+;------------------------------------------------------------------------------------
+;Usefull reporters
+;------------------------------------------------------------------------------------
 
 to-report global-clustering-coefficient
   let closed-triplets sum [ nw:clustering-coefficient * count my-connections * (count my-connections - 1) ] of people
@@ -580,32 +491,24 @@ to-report global-clustering-coefficient
   report closed-triplets / triplets
 end
 
-
-to-report clustering-of-greens
-  let mean-path-to (list)
-  ask people with [my-behavior = 1] [
-    let path-to (list)
-    ask other people with [my-behavior = 1] [
-      set path-to lput length (nw:path-to myself) path-to
-    ]
-    set mean-path-to lput mean path-to mean-path-to
-  ]
-  report mean mean-path-to
-end
-
-
 to-report normalize-data-in-range [mean-data std-data low high]
   let x -1
   while [x < low or x > high] [
     set x precision (random-normal mean-data std-data) 3 ]
   report x
 end
+
+to-report TRANSFORM-LIST! [#list #sep]
+  if  #list = 0 [report #list]
+  if not empty? #list [report reduce [[x y] -> (word x #sep y)] #list]
+  report #list
+end
 @#$#@#$#@
 GRAPHICS-WINDOW
-159
-10
-567
-419
+573
+52
+981
+461
 -1
 -1
 3.9604
@@ -629,10 +532,10 @@ ticks
 30.0
 
 BUTTON
-2
-16
-65
-49
+0
+45
+63
+78
 setup
 setup\n
 NIL
@@ -646,10 +549,10 @@ NIL
 1
 
 BUTTON
-1
-51
-67
-84
+79
+46
+145
+79
 go
 go\nif report-sim-ended [stop]
 T
@@ -663,20 +566,20 @@ NIL
 1
 
 CHOOSER
-336
-469
-474
-514
+382
+391
+520
+436
 seeding-strategy
 seeding-strategy
 "Snowball" "Shotgun" "Shotgun-NS" "Silver-Bullets" "Outskirts" "Bridges" "CCC" "S_Closeness" "CD_Closeness" "CR_Closeness"
-3
+1
 
 SLIDER
-336
-434
-477
-467
+382
+356
+523
+389
 social-innovators
 social-innovators
 0
@@ -688,10 +591,10 @@ NIL
 HORIZONTAL
 
 MONITOR
-638
-491
-769
-536
+1193
+486
+1324
+531
 #social entrepeneurs
 count people with [ social-innovator? = true]
 17
@@ -699,35 +602,35 @@ count people with [ social-innovator? = true]
 11
 
 SLIDER
-158
-432
-330
-465
+170
+438
+342
+471
 rewiring-proportion
 rewiring-proportion
 0
 1
-0.1
+0.15
 0.01
 1
 NIL
 HORIZONTAL
 
 CHOOSER
-0
-308
-138
-353
+1
+193
+139
+238
 module
 module
 "stochastic" "threshold-model"
-1
+0
 
 SLIDER
-1
-381
-93
-414
+2
+266
+94
+299
 k1
 k1
 0
@@ -739,10 +642,10 @@ NIL
 HORIZONTAL
 
 SLIDER
-0
-415
-92
-448
+1
+300
+93
+333
 k2
 k2
 k1
@@ -754,10 +657,10 @@ NIL
 HORIZONTAL
 
 BUTTON
-0
-86
-73
-119
+158
+47
+231
+80
 go once
 go
 NIL
@@ -771,10 +674,10 @@ NIL
 1
 
 SLIDER
-158
-470
-330
-503
+170
+476
+342
+509
 dekkers-power
 dekkers-power
 0
@@ -786,96 +689,63 @@ NIL
 HORIZONTAL
 
 TEXTBOX
-4
-362
-154
-380
+5
+247
+155
+267
 Stochastic Module
-10
+14
 0.0
 1
 
 TEXTBOX
-0
-283
-150
-302
+1
+168
+151
+190
 Decision Modules
-15
+18
 0.0
 1
 
 MONITOR
-635
-444
-769
-489
+1012
+584
+1146
+629
 Average node degree
-mean [count connections] of people / population-size
+precision ( mean [count connections] of people / population-size) 3
 17
 1
 11
 
 MONITOR
-632
-393
-722
-438
+1014
+441
+1104
+486
 #connections
 COUNT CONNECTIONS
 17
 1
 11
 
-MONITOR
-631
-348
-688
-393
-NIL
-rewired
-17
-1
-11
-
-MONITOR
-788
-440
-862
-485
-NIL
-Max-Green
-17
-1
-11
-
-MONITOR
-793
-497
-850
-542
-NIL
-Tipped?
-17
-1
-11
-
 SWITCH
-0
-152
-116
-185
+200
+196
+316
+229
 static-seed?
 static-seed?
-0
+1
 1
 -1000
 
 INPUTBOX
-0
-185
-155
-245
+162
+229
+317
+289
 seed
 2.0
 1
@@ -883,25 +753,25 @@ seed
 Number
 
 SLIDER
-157
-507
-329
-540
+169
+513
+341
+546
 n-communities
 n-communities
 1
 7
-5.0
+4.0
 1
 1
 NIL
 HORIZONTAL
 
 SLIDER
-157
-544
-330
-577
+171
+355
+344
+388
 Population-Size
 Population-Size
 1
@@ -913,9 +783,9 @@ NIL
 HORIZONTAL
 
 MONITOR
-724
+1016
 394
-826
+1118
 439
 NIL
 count people
@@ -924,10 +794,10 @@ count people
 11
 
 BUTTON
-575
-33
-755
-66
+384
+199
+564
+232
 NIL
 repeat 1 [layout-network]
 NIL
@@ -941,20 +811,20 @@ NIL
 1
 
 CHOOSER
-575
-78
-713
-123
+383
+234
+521
+279
 layout
 layout
 "spring" "circle" "tutte" "radial"
 1
 
 SLIDER
-156
-580
-331
-613
+170
+549
+345
+582
 average-node-degree
 average-node-degree
 2
@@ -965,93 +835,26 @@ average-node-degree
 NIL
 HORIZONTAL
 
-BUTTON
-0
-249
-133
-282
-NIL
-set-default-settings
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
 SLIDER
-155
-616
-332
-649
+169
+585
+346
+618
 clustering-coefficient
 clustering-coefficient
 0
 12
-7.95
+2.0
 0.05
 1
 NIL
 HORIZONTAL
 
-BUTTON
-0
-121
-89
-154
-Go N times
-repeat N [go]
-NIL
-1
-T
-OBSERVER
-NIL
-NIL
-NIL
-NIL
-1
-
-INPUTBOX
-90
-94
-140
-154
-N
-100.0
-1
-0
-Number
-
 MONITOR
-922
-256
-1016
-301
-Surface-Green
-precision norm-csag 5
-17
-1
-11
-
-MONITOR
-915
-300
-1018
-345
-NIL
-majority-green?
-17
-1
-11
-
-MONITOR
-945
-211
-1017
-256
+1083
+199
+1155
+244
 NIL
 tick-ended
 17
@@ -1059,25 +862,10 @@ tick-ended
 11
 
 SLIDER
-672
-240
-844
-273
-duration-to-decision
-duration-to-decision
 0
-100
-0.0
-1
-1
-NIL
-HORIZONTAL
-
-SLIDER
-674
-274
-846
-307
+365
+139
+398
 threshold-pop
 threshold-pop
 0
@@ -1089,10 +877,10 @@ NIL
 HORIZONTAL
 
 SWITCH
-576
-124
-704
-157
+384
+280
+512
+313
 layout-network?
 layout-network?
 0
@@ -1100,21 +888,21 @@ layout-network?
 -1000
 
 MONITOR
-831
-392
-944
-437
+1246
+340
+1423
+385
 NIL
-green-percentage
+precision green-percentage 2
 17
 1
 11
 
 MONITOR
-720
-198
-831
-243
+1188
+296
+1299
+341
 NIL
 report-sim-ended
 17
@@ -1122,24 +910,24 @@ report-sim-ended
 11
 
 MONITOR
-1120
-256
-1407
-301
-NIL
+1013
+347
+1163
+392
+Variance Node Degree
 variance [number-of-peers] of people
 17
 1
 11
 
 PLOT
-804
-21
-1004
-171
-plot 2
-NIL
-NIL
+996
+15
+1196
+165
+Node Degree Distribution
+Node Degree
+Agents
 0.0
 50.0
 0.0
@@ -1151,109 +939,117 @@ PENS
 "default" 1.0 1 -16777216 true "" "histogram [number-of-peers] of people"
 
 CHOOSER
-4
-488
-142
-533
+170
+390
+308
+435
 network-generator
 network-generator
 "Small-World" "Kleinberg" "Scale-Free" "custom"
-3
+0
 
 MONITOR
-669
-582
-726
-627
-NIL
-MPL
+1013
+487
+1129
+532
+Mean Path Length
+precision MPL 3
 17
 1
 11
 
 MONITOR
-638
-536
-695
-581
-NIL
-MPL
+1013
+533
+1180
+578
+Global Clustering Coefficient
+precision GCC 3
 17
 1
 11
 
 MONITOR
-723
-549
-780
-594
-NIL
-GCC
-17
-1
-11
-
-PLOT
-1131
-137
-1331
-287
-plot 1
-NIL
-NIL
-0.0
-1.0
-0.0
-10.0
-true
-false
-"" ""
-PENS
-"default" 0.05 1 -16777216 true "histogram [my-threshold] of people" "histogram [my-threshold] of people"
-
-MONITOR
-1065
-424
-1253
-469
+1188
+202
+1376
+247
 NIL
 mean [my-threshold] of people
 17
 1
 11
 
-MONITOR
-917
-561
-1086
-606
-NIL
-ratio-influencers-innovators
-17
-1
-11
+TEXTBOX
+384
+172
+521
+195
+Update view
+18
+0.0
+0
 
-MONITOR
-951
-636
-1061
-681
-NIL
-count influencers
-17
+TEXTBOX
+5
+345
+155
+363
+Threshold Module
+14
+0.0
 1
-11
 
-MONITOR
-1094
-659
-1389
-704
-NIL
-mean [number-of-peers] of influencers
-17
+TEXTBOX
+200
+172
+350
+192
+Random Seeding
+16
+0.0
 1
-11
+
+TEXTBOX
+175
+329
+366
+373
+Network Configuration
+18
+0.0
+1
+
+TEXTBOX
+381
+328
+531
+350
+Seeding Strategy
+18
+0.0
+1
+
+TEXTBOX
+5
+10
+155
+37
+Buttons
+22
+0.0
+1
+
+TEXTBOX
+0
+125
+207
+152
+Input Parameters:
+22
+0.0
+1
 
 @#$#@#$#@
 ## WHAT IS IT?
@@ -4075,7 +3871,7 @@ NetLogo 6.4.0
       <value value="0.3"/>
     </enumeratedValueSet>
   </experiment>
-  <experiment name="experimentCU_6" repetitions="1" runMetricsEveryStep="false">
+  <experiment name="experimentNW" repetitions="1" runMetricsEveryStep="false">
     <setup>setup</setup>
     <go>go</go>
     <exitCondition>report-sim-ended</exitCondition>
@@ -4087,6 +3883,11 @@ NetLogo 6.4.0
     <metric>VD</metric>
     <metric>green-percentage</metric>
     <metric>tick-ended</metric>
+    <metric>TRANSFORM-LIST! peer-count-list ","</metric>
+    <metric>TRANSFORM-LIST! clus-coef-list ","</metric>
+    <metric>TRANSFORM-LIST! social-innovator-list ","</metric>
+    <metric>TRANSFORM-LIST! edge-from-list ","</metric>
+    <metric>TRANSFORM-LIST! edge-to-list ","</metric>
     <enumeratedValueSet variable="network-generator">
       <value value="&quot;custom&quot;"/>
     </enumeratedValueSet>
@@ -4097,13 +3898,17 @@ NetLogo 6.4.0
       <value value="7"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="average-node-degree">
-      <value value="6"/>
+      <value value="4"/>
+      <value value="7"/>
+      <value value="10"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="module">
       <value value="&quot;threshold-model&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="seeding-strategy">
       <value value="&quot;Silver-Bullets&quot;"/>
+      <value value="&quot;Shotgun&quot;"/>
+      <value value="&quot;CR_Closeness&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="n-communities">
       <value value="1"/>
@@ -4138,16 +3943,18 @@ NetLogo 6.4.0
       <value value="&quot;spring&quot;"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="clustering-coefficient">
-      <value value="3"/>
-      <value value="4"/>
-      <value value="5"/>
-      <value value="6"/>
+      <value value="1"/>
+      <value value="1.4"/>
+      <value value="1.8"/>
+      <value value="2.2"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="layout-network?">
       <value value="false"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="social-innovators">
       <value value="0.1"/>
+      <value value="0.2"/>
+      <value value="0.3"/>
     </enumeratedValueSet>
     <enumeratedValueSet variable="threshold-pop">
       <value value="0.3"/>

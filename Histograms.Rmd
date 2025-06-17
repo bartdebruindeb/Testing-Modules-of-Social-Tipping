@@ -1,0 +1,211 @@
+---
+output:
+  html_document: default
+  pdf_document: default
+  word_document: default
+---
+
+
+```{r include=FALSE}
+#load relevant libraries
+#load packages
+
+rm(list=ls())
+
+if(!require(installr)) {
+  install.packages("installr"); 
+  require(installr)
+} #load
+
+#updateR()
+
+
+if(!require("pacman")) install.packages('pacman')
+pacman::p_load(NetworkToolbox,
+               # graph,
+               leidenAlg,
+               ggthemes,
+               knitr ,
+               see,
+               scico,
+               data.table,
+               igraph,
+               qgraph,
+               tidyverse,
+               dplyr,
+               ggplot2,
+               naniar,
+               gdata,
+               doParallel,
+               wCorr,
+               qgraph,
+               MASS,
+               Matrix,
+               matrixcalc,
+               randcorr,
+               rWishart,
+               devtools,
+               ggpubr,
+               tinytex,
+               ggdark )
+
+```
+
+##set working directory
+
+```{r include=FALSE}
+
+### MANUAL INPUT: specify and set working directory ###
+workdirec <-"C:/Users/20225262/OneDrive - TU Eindhoven/Documents/GitHub/Testing-Modules-of-Social-Tipping" 
+
+
+setwd(workdirec)
+source("functions_behaviorspace_table_output_handling.R")
+
+### MANUAL INPUT: Optionally specify filepath (i.e. where the behaviorspace csv is situated) ###
+#NOTE: if csv files are placed in the workdirec, then leave filesPath unchanged
+filesPath <- "C:/Users/20225262/OneDrive - TU Eindhoven/Documents/Models/Social Tipping Modules/NW generators/"
+### MANUAL INPUT: specify filenames ###
+
+#filesPathPatterns <- list("Experiment1DR*","Experiment3DR*","Experiment7DR*")
+
+
+filesNames <- list.files(path = filesPath, pattern = "experimentNW-2759056-5")
+# READ DATA ---------------------------------------------------------------
+
+df1 <- loadData(filesPath, filesNames)
+df1 <- removeVariables(df1)
+
+```
+
+``` {r include = FALSE}
+
+# REMOVE IRRELEVANT VARIABLES ---------------------------------------------------------------
+
+
+# RENAME VARIABLES ---------------------------------------------------------------
+printColumnNames(df1)
+
+  ### MANUAL INPUT: specify new (easy-to-work-with) variable names ###
+  new_variable_names <- list(
+    "Run_Number",
+  #  "Network_Generator",
+    "Dekkers_Power",
+     "Node_Degree",
+  #   "Tipping_Strategy",
+      "Communities",
+     "Rewiring_Proportion",
+   # "duration_to_decision",
+   #  "Population_Size",
+      "Clustering_Exponent",
+  #    "Innovators",
+  # "Threshold",
+      "ticks",
+   # "MSCe",
+  #  "MEC",
+  #  "MBC",
+  #  "MCCe",
+   "MSCl",
+    "GCC",
+    "MCPL",
+    "MPL",
+  #   "VCCe",
+  #  "VEC",
+  #  "VBC",
+    "VCCo",
+   "VD",
+#    "Majority_Green",
+   "Green_Percentage",
+    "Sim_Time",
+"Node_Degree_List",
+"Clus_Coef_List"
+    )
+
+#change variable names2
+variable_names <- names(df1)
+if (length(variable_names) == length(new_variable_names)) {
+  clean_df <- changeColumnNames(df1, new_variable_names)
+} else {
+  print (length(variable_names))
+  print (length(new_variable_names))
+  print("ERROR: the number of variable names you specified is not the same as the number of variables present within the dataframe; please check again")
+}
+
+#clean_df <- subset(clean_df, Tipping_Strategy != "Shotgun-NS")
+
+
+#clean_df <- clean_df[!(clean_df$Mean_Path_Length %in% "false"),]
+
+#clean_df <- clean_df[order(clean_df$Run_Number),]
+
+
+```
+
+
+
+```{r echo=FALSE,fig.height=5, fig.width=10, message=TRUE, warning=FALSE, results='asis'}
+#df_mean$Majority_Green <- as.factor(df_mean$Majority_Green)
+# "Mean_Average_Path", #Connections","Mean_Node_Degree", "Mean_Cluster_Coefficient"
+#install.packages("see")
+#ibrary(see)
+clean_df$Rewiring_Proportion <- as.factor(clean_df$Rewiring_Proportion)
+clean_df <- filter(clean_df, clean_df$Node_Degree == 7)
+
+for (i in unique(clean_df$Node_Degree)) {
+  for (j in unique(clean_df$Communities)) {
+    for (k in unique(clean_df$Clustering_Exponent)) {
+      for (l in unique(clean_df$Dekkers_Power)) {
+        for (m in unique(clean_df$Rewiring_Proportion)) {
+          df_use <- clean_df %>% filter(Node_Degree == i, Communities == j, Clustering_Exponent == k, Dekkers_Power == l, Rewiring_Proportion == m)
+          h <- (df_use$Node_Degree_List)
+          hist_df <- as.data.frame(pmax(matrix(scan(quiet = TRUE, text = toString(h), sep = ","), ncol = 1,byrow = FALSE),0))
+        HIST <-  ggplot(hist_df,aes(x=V1))+ 
+    geom_histogram(binwidth=1)+
+    #  geom_point (size = 2) + 
+   #geom_smooth(span=0.8)+
+     xlab("Node_Degree") +
+   # ylab("Clustering_Exponent") + 
+   #labs(title = "Node Degree == 10")+
+  #  scale_color_oi()+ 
+   # scale_x_log10()+
+    ggtitle(paste('Node Degree = ', i, ', Communities = ', j, ',\nClustering Exponent = ', k, ', Dekkers Power = ', l, ', \nRewiring Proportion = ', m, 'Variance Node Degree = ', as.character(round(df_use$VD),3)))+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text( size = 10), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 13) ) 
+        
+         c <- (df_use$Clus_Coef_List)
+          c_df <- as.data.frame(pmax(matrix(scan(quiet = TRUE, text = toString(c), sep = ","), ncol = 1,byrow = FALSE),0))
+        CIST <-  ggplot(c_df,aes(x=V1))+ 
+    geom_histogram(binwidth=0.01)+
+    #  geom_point (size = 2) + 
+   #geom_smooth(span=0.8)+
+     xlab("Clustering_Coefficient") +
+   # ylab("Clustering_Exponent") + 
+   #labs(title = "Node Degree == 10")+
+  #  scale_color_oi()+ 
+   # scale_x_log10()+
+    ggtitle(paste('Node Degree = ', i, ', Communities = ', j, ',\nClustering Exponent = ', k, ', Dekkers Power = ', l, ', \nRewiring Proportion = ', m, 'Mean Cluster Coefficient = ', as.character(round(df_use$MSCL,3))))+
+    theme_bw()+
+    theme(strip.background = element_rect(fill="black"),
+          strip.text = element_text(size=12, colour="white", face = "bold"), 
+          plot.title = element_text(10), 
+          plot.subtitle = element_text( size = 15),
+          axis.title = element_text( size = 13) ) 
+        
+          
+     #facet_grid(Rewiring_Proportion~ Dekkers_Power, labeller = label_both )
+       c_H <- ggarrange(HIST, CIST, ncol=2,nrow=1)
+       print(c_H)
+
+        }
+      }
+    }
+  }
+}
+
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
